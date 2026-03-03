@@ -11,10 +11,10 @@ LLM 응답은 “차트를 렌더링해서 보고 있는 것처럼” 축/범례
 
 ## 구현 위치
 
-- Endpoint: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/main.py`
+- Endpoint: `main.py`
   - `POST /answer_question`
-- Pipeline: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/answer_pipeline.py`
-- Prompt template: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/prompts/chart_answer.md`
+- Pipeline: `opsspec/modules/answer_pipeline.py`
+- Prompt template: `prompts/chart_answer.md`
 
 ## Request schema
 
@@ -47,7 +47,7 @@ LLM 응답은 “차트를 렌더링해서 보고 있는 것처럼” 축/범례
 
 `debug=true`로 호출하면, pipeline이 요청별 스냅샷을 저장합니다.
 
-- 저장 위치: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/debug_answers/<MMddhhmm>/`
+- 저장 위치: `opsspec/debug_answers/<MMddhhmm>/`
 - 대표 파일:
   - `00_request.json`
   - `01_context.json` (ChartContext + rows preview)
@@ -57,7 +57,13 @@ LLM 응답은 “차트를 렌더링해서 보고 있는 것처럼” 축/범례
 
 ## Module trace helper (`/run_module_trace`)
 
-`/run_module_trace` accepts the same metadata (question, explanation, Vega-Lite JSON path, CSV path) and returns the Module 1/2/3 artifacts plus the final grammar. Its response contains `plan_tree`, `grounded_plan_tree`, `ops_spec`, and the entire `trace`; the test script now calls this endpoint and stores the JSON under the `module_trace` column of `test.csv` in addition to the grammar.
+`/run_module_trace` accepts the same metadata (question, explanation, Vega-Lite JSON path, CSV path) and returns the recursive-pipeline trace plus the final grammar.
+
+Its response contains:
+- `inventory`: extracted tasks S(O)
+- `steps`: recursive step traces (picked taskId, nodeId, grounded op_spec summary, artifact summary, ...)
+- `ops_spec`: final OpsSpec group map
+- `trace`: the full structured trace payload
 
 ---
 

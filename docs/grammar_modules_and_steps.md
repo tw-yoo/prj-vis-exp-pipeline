@@ -1,274 +1,242 @@
-# 실제 Grammar 파이프라인 문서 (Modules + Steps)
+# Recursive Grammar 파이프라인 문서 (Inventory + Step-Compose)
 
-이 문서는 `nlp_server`의 **현재 구현 상태** 기준으로, 자연어 입력이 어떤 모듈/스텝을 거쳐 최종 OpsSpec(=grammar)로 변환되는지 설명합니다. (수정 “계획” 문서가 아닙니다.)
+이 문서는 `nlp_server`의 **현재 구현 상태** 기준으로, 자연어 입력이 어떤 모듈/스텝을 거쳐 최종 OpsSpec(=grammar) DAG로 합성되는지 설명합니다. (수정 “계획” 문서가 아닙니다.)
+
+`/generate_grammar`가 어떤 코드 경로를 거치는지(파일/함수 단위)는 `docs/generate_grammar_call_flow.md`를 참고하세요.
+
+핵심 특징:
+- 결과는 항상 **node/edge(meta.nodeId/meta.inputs)** 를 가진 DAG
+- explanation에서 **S(O)=연산 태스크 집합**을 만든 뒤, “가능한 것 1개씩” 실행하며 그래프를 확정(forward-chaining)
+- LLM 출력은 항상 **strict JSON + Pydantic 스키마 + 계약 기반 validator** 로 검증하고 실패 시 strict retry
+- nodeId는 실행 순서대로 **안정적(stable)으로 `n1,n2,...` 부여** (id 재작성 canonicalize는 사용하지 않음)
+
+---
 
 ## 0) 엔드포인트 계약 (Public API)
 
-- Endpoint: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/main.py`
+- Endpoint: `main.py`
   - `POST /generate_grammar`: `question + explanation + vega_lite_spec + data_rows (+ debug)` → `{<opsSpec group map>}`
+  - `POST /run_module_trace`: 위 입력을 파일 경로로 받아, inventory/step trace를 포함한 디버그 응답 반환
 
-파이프라인 오케스트레이션(모듈 호출/재시도/디버그 번들 저장):
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/pipeline.py`
+파이프라인 오케스트레이션(모듈 호출/재시도/실행/디버그 번들 저장):
+- `opsspec/modules/pipeline.py`
 
 ---
 
-## 1) 핵심 데이터 구조(중간 표현)
+## 1) 핵심 데이터 구조
 
 ### 1-1) ChartContext (결정론적 컨텍스트)
 
-- 정의: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/core/models.py`
+- 정의: `opsspec/core/models.py`
+- 생성: `opsspec/runtime/context_builder.py`
   - `primary_dimension`, `primary_measure`, `series_field`
-  - `categorical_values[field]` (도메인 목록)
-  - `field_types`, `measure_fields`, `dimension_fields`, `numeric_stats`, `mark`, `is_stacked`, ...
+  - `categorical_values[field]` (도메인 목록), `numeric_stats`, `field_types`, `mark`, `is_stacked`, ...
 
-생성 로직:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/runtime/context_builder.py`
+### 1-2) Inventory = S(O) (LLM이 뽑는 “연산 태스크”)
 
-### 1-2) PlanTree / GroundedPlanTree (모듈 1→2 출력)
+- 모델: `opsspec/core/recursive_models.py`
+  - `OpTask(taskId="o1", op="average", sentenceIndex=1, mention="...", paramsHint={...})`
+- 모듈: `opsspec/modules/module_inventory.py`
+  - sentence split: `split_explanation_sentences`
+- 프롬프트:
+  - `prompts/opsspec_inventory.md`
+  - shared rules: `prompts/opsspec_shared_rules.md`
 
-- 정의: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/core/models.py`
+규칙(요약):
+- 동일 op라도 “설명에서 언급된 역할/부분이 다르면” 다른 taskId를 부여(=태스크 단위는 문장 의미 단위)
+- `taskId`는 반드시 `o<digits>`이고 유니크해야 함(validator 강제)
+- `paramsHint`는 prompting 안정성을 위해 **flat(스칼라/스칼라 리스트)** 만 허용(validator 강제)
 
-노드(PlanNode)의 핵심 필드:
-- `nodeId`: 반드시 `n<digits>` 형태 (예: `n1`)
-- `op`: 연산 이름(legacy op)
-- `group`: 문장 레이어 그룹만 허용
+### 1-3) Step trace (연구 재현성을 위한 구조적 기록)
+
+- 모델: `opsspec/core/models.py`
+  - `RecursivePipelineTrace`, `RecursiveStepTrace`
+- `/run_module_trace`는 이 trace에서:
+  - `inventory` (S(O))
+  - `steps` (각 step의 선택된 task, grounded spec 요약, artifact 요약)
+  - `ops_spec` (최종 그래프)
+  - 를 반환합니다.
+
+### 1-4) OpsSpec group map = 최종 DAG
+
+- Union/파서:
+  - `opsspec/specs/union.py`
+- 공통 meta 필드:
+  - `opsspec/specs/base.py`
+
+핵심 규칙:
+- 각 op는 `meta.nodeId`와 `meta.inputs`로 DAG 연결이 복원 가능해야 함
+- cross-node scalar reference는 `"ref:nX"` **문자열만** 허용 (객체 `{ "id": "nX" }` 금지)
+- group 이름은 “series branch”가 아니라 **explanation sentence layer**:
   - `sentenceIndex=1 → "ops"`
   - `sentenceIndex=k → "ops{k}" (k>=2)`
-- `params`: **flat key-value** (중첩 객체 금지)
-- `inputs`: 이전 노드 `nodeId` 의존성
-- `sentenceIndex`: 1-based 문장 인덱스
-
-### 1-3) OpsSpec group map (모듈 3 출력)
-
-- 모델/파서:
-  - OperationSpec Union: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/specs/union.py`
-  - Base meta 필드: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/specs/base.py`
-
-OpsSpec의 공통 핵심 규칙:
-- 각 op는 `meta.nodeId`, `meta.inputs`, `meta.sentenceIndex`를 통해 DAG 연결이 복원 가능해야 함
-- cross-node scalar reference는 `"ref:nX"` **문자열만** 허용 (객체 `{ "id": "nX" }` 금지)
 
 ---
 
-## 2) 전체 파이프라인(실제 실행 순서)
+## 2) 전체 파이프라인 개요
 
 구현 entrypoint:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/pipeline.py` (`OpsSpecPipeline.generate`)
+- `opsspec/modules/pipeline.py` (`OpsSpecPipeline.generate`)
 
-큰 흐름:
-1. Step 0: Context Builder (deterministic)
-2. Module 1: Decompose (LLM + strict retry ×3)
-3. Module 2: Resolve (4-step + strict retry ×3)
-4. Module 3: Specify (LLM + strict retry ×3 + cross-module feedback)
-5. Canonicalize (deterministic)
-6. (옵션) Draw plan 생성 + export
-7. `/generate_grammar` 응답은 opsSpec groups map을 그대로 반환 (최소 응답)
+```mermaid
+flowchart LR
+  A["/generate_grammar request"] --> B["Context Builder (deterministic)"]
+  B --> C["LLM Inventory: S(O) 생성 (strict retry)"]
+  C --> D{"S(O) empty?"}
+  D -->|no| E["LLM Step-Compose: 다음 1개 노드 제안 (strict retry)"]
+  E --> F["Grounding (deterministic): token/value normalize"]
+  F --> G["Validate + Build OperationSpec (deterministic)"]
+  G --> H["Execute step (OpsSpecExecutor)"]
+  H --> I["Artifact summary 갱신(C에 추가)"]
+  I --> D
+  D -->|yes| J["Finalize ops_spec + debug bundle + DOT graph"]
+```
 
 ---
 
-## 3) Step 0 — Context Builder
+## 3) Step 0 — Context Builder (deterministic)
 
 코드:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/runtime/context_builder.py`
+- `opsspec/runtime/context_builder.py`
 
 입력:
 - `vega_lite_spec`
-- `data_rows` (현재 코드에서는 rows preview도 함께 생성)
+- `data_rows`
 
 출력:
 - `ChartContext`
 - `context_warnings`
-- `rows_preview`
-
-설명:
-- Vega-Lite encoding의 `type`(nominal/quantitative/temporal 등)을 강한 힌트로 사용해 field type을 안정화합니다.
-- categorical 도메인 목록/measure 후보/mark/stacked 여부 등을 구성해 이후 LLM 모듈이 안정적으로 생성하도록 돕습니다.
+- `rows_preview` (LLM prompting/debug용)
 
 ---
 
-## 4) Module 1 — Decompose (Explanation Decomposition)
+## 4) Module — Inventory (LLM + strict retry)
 
 코드:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/module_decompose.py`
+- `opsspec/modules/module_inventory.py`
+
+검증:
+- `opsspec/validation/recursive_validators.py`
+  - `validate_inventory`
+
+입력(프롬프트에 포함되는 것):
+- `question`, `explanation`, sentence-split 결과
+- `chart_context_json`, `rows_preview_json`
+- op 계약(JSON): `opsspec/runtime/op_registry.py` (`build_ops_contract_for_prompt`)
+
+출력:
+- `inventory.tasks[]` (S(O))
+
+실패/재시도:
+- inventory schema/validator 위반 시 feedback을 넣고 `RECURSIVE_MAX_RETRIES`까지 strict retry
+
+---
+
+## 5) Recursive loop (Step-Compose → Ground → Validate → Execute)
+
+### 5-1) Module — Step-Compose (LLM + strict retry)
+
+코드:
+- `opsspec/modules/module_step_compose.py`
 
 프롬프트:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/prompts/opsspec_decompose.md`
-- shared rules: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/prompts/opsspec_shared_rules.md`
+- `prompts/opsspec_step_compose.md`
 
-입력(요약):
-- `question`, `explanation`
-- `chart_context_json`, `roles_summary`, `series_domain`, `measure_fields`, `rows_preview`
-- 이전 실패의 `validation_feedback` (strict retry 시)
+출력 스키마(요약):
+- `pickTaskId`: 남은 task 중 1개
+- `op_spec`: id/meta/chartId 없이, op-specific 필드만 포함
+- `inputs`: 이미 실행된 nodeId만
 
-출력:
-- `plan_tree`
+검증(계약 기반):
+- `opsspec/validation/recursive_validators.py`
+  - `validate_step_compose_output`
+  - 금지: `{ "id": "nX" }` 객체 ref, `id/meta/chartId` 포함 등
 
-참고(디버깅/분석용):
-- 파이프라인은 `question` 텍스트로부터 `goal_type`을 결정론적으로 추정해 trace/debug에만 기록합니다.
-  - 코드: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/validation/plan_validators.py` (`infer_goal_type`)
-
-모듈 내 핵심 스텝(구현 기준):
-1) explanation 문장 분리(결정론적 split) → `sentenceIndex`를 위한 기반 구성  
-   - 구현: `_split_explanation_sentences` in `module_decompose.py`
-2) LLM이 문장 레이어 그룹(`ops/ops2/...`)과 의존성(`inputs`)을 가진 PlanTree를 생성
-3) 파이프라인에서 PlanTree를 엄격 검증 + 실패 시 feedback을 넣어 재시도(최대 3회)
-   - 구조 검증: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/validation/plan_validators.py`
-   - 호출부: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/pipeline.py`
-
-중요 규칙(실제 스키마 관점):
-- `group`은 문장 레이어 그룹만 허용(`ops`, `ops2`, `ops3`, ...)
-- `params`는 flat만 허용(중첩 JSON 금지)
-- role token은 `@primary_dimension/@primary_measure/@series_field`만 사용 가능(문자열로만)
-- series 제한은 `filter(field=@series_field, include/exclude=...)`로 표현하지 않습니다. 반드시 `params.group="<series value>"`로 제한합니다.
-
----
-
-## 5) Module 2 — Resolve (Chart-Grounded Resolution: 4-step)
+### 5-2) Grounding (deterministic)
 
 코드:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/module_resolve.py`
+- `opsspec/runtime/grounding.py`
+  - role token 치환: `@primary_measure/@primary_dimension/@series_field`
+  - 도메인 값 정규화: exact → case-insensitive → difflib fuzzy(cutoff=0.8)
 
-프롬프트(이 모듈에서 LLM은 Step 3에만 사용):
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/prompts/opsspec_resolve.md`
-
-검증 로직(도메인 validation):
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/validation/resolve_validators.py`
-
-입력:
-- `plan_tree` (Module 1 출력)
-- `chart_context` (Pydantic 모델)
-- `rows_preview`
-- 이전 실패의 `validation_feedback` (strict retry 시)
-
-출력:
-- `grounded_plan_tree` (+ warnings)
-
-### Step 2-1) Token resolution (결정론적)
-
-역할 토큰을 실제 필드명으로 치환합니다:
-- `@primary_measure` → `chart_context.primary_measure`
-- `@primary_dimension` → `chart_context.primary_dimension`
-- `@series_field` → `chart_context.series_field` (있을 때만)
-
-구현:
-- `_resolve_role_tokens` in `module_resolve.py`
-
-### Step 2-2) Value resolution (결정론적, multi-strategy)
-
-categorical 도메인 매칭을 통해 문자열 값을 정규화합니다.
-
-- `params.group`:
-  - `chart_context.series_field`가 있을 때, `categorical_values[series_field]` 도메인에서 매칭
-- `params.include/params.exclude`:
-  - `params.field`가 categorical 도메인을 가지면, `categorical_values[field]`에서 매칭
-
-매칭 전략:
-1) exact
-2) case-insensitive
-3) fuzzy(`difflib.get_close_matches`, cutoff=0.8)
-
-구현:
-- `_resolve_values` + `_resolve_single_value` in `module_resolve.py`
-
-### Step 2-3) LLM disambiguation (조건부)
-
-Step 1-2 이후에도 “도메인에 없는 값”이 남아 의미 판단이 필요하면 LLM을 호출합니다.
-
-호출 조건(요약):
-- `group`이 series 도메인에 없거나
-- include/exclude 값이 해당 field 도메인에 없는 경우
-
-구현:
-- `_has_unresolved_domain_values` + `_llm_disambiguate` in `module_resolve.py`
-
-### Step 2-4) Domain validation (결정론적)
-
-하드 에러(실패) vs 소프트 경고를 구분해 검증합니다.
-
-하드 에러 예:
-- 미해결 `@token` 잔류
-- 존재하지 않는 `params.field`
-- 존재하지 않는 nodeId를 향하는 `ref:nX`
-- `inputs`에 알 수 없는 nodeId 포함
-
-구현:
-- `validate_grounded_plan` in `resolve_validators.py`
-
-### Resolve 재시도 정책(파이프라인)
-
-Resolve 전체는 실패 시 최대 3회 재시도합니다.
-- 호출부: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/pipeline.py`
-- debug 스냅샷: `03_module2_resolve_step1.json`, `03_module2_resolve_step2.json`, `03_module2_resolve_step3_llm.json`, `03_module2_resolve_final.json`
-
----
-
-## 6) Module 3 — Specify (Grammar Specification)
+### 5-3) Build + Validate OperationSpec (deterministic)
 
 코드:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/module_specify.py`
+- 파싱: `parse_operation_spec` in `opsspec/specs/union.py`
+- 의미 검증: `validate_operation` in `opsspec/validation/validators.py`
 
-프롬프트:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/prompts/opsspec_specify.md`
+pipeline이 결정론적으로 부여하는 필드:
+- `nodeId = n1,n2,...` (실행 순서)
+- `id = nodeId`
+- `meta.sentenceIndex = task.sentenceIndex`
+- `meta.inputs = sorted(unique(inputs ∪ scalar_ref_deps))`
+- `meta.source = "recursive_step=<k>;taskId=<oX>"`
 
-op contract(LLM에 주입되는 operation별 required/optional/forbidden):
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/runtime/op_registry.py` (`build_ops_contract_for_prompt`)
+### 5-4) Execute + Artifact summary
 
-입력:
-- `grounded_plan_tree` (Module 2 출력)
-- `chart_context_json`
-- `ops_contract_json`
-- 이전 실패의 `validation_feedback` (strict retry 시)
+- 실행기: `opsspec/runtime/executor.py`
+  - 모르는 op는 `NotImplementedError`로 fail-fast
+- artifact 요약:
+  - `opsspec/runtime/artifacts.py`
+  - executor runtime에서 scalar/table 출력의 compact summary를 만들고, 다음 step-compose prompting에 사용
 
-출력:
-- `ops_spec` (group → OperationSpec list)
-
-핵심 규칙(실제 validator 기준):
-- grounded plan의 각 node는 **정확히 1개** OperationSpec으로 변환되어야 함(누락/추가 금지)
-- `meta.nodeId == nodeId`, `meta.sentenceIndex == sentenceIndex` 유지
-- `meta.inputs`에 node.inputs를 반영해야 함
-
-검증/파싱:
-- schema 파싱: `parse_operation_spec` in `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/specs/union.py`
-- semantic 검증: `validate_operation` in `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/validation/validators.py`
-- plan↔spec 1:1 매핑 검증: `_validate_compiled_groups_match_plan` in `pipeline.py`
-- group 규칙: `"last"` 그룹은 최종 OpsSpec에서 금지(문장 레이어 `ops/ops2/...`만 허용)
-
-재시도 정책:
-- Specify는 실패 시 최대 3회 strict retry
-- 또한 “그라운딩 문제”로 보이면(Module 3 semantic error가 field/domain 문제일 때) Module 2를 1회 재실행 후 다시 Specify를 시도하는 cross-module feedback 로직이 있습니다.
-  - 구현: `_is_grounding_error` + 관련 retry 흐름 in `pipeline.py`
-
----
-
-## 7) Canonicalize (결정론적 정규화)
+### 5-5) Normalize (stable IDs 유지)
 
 코드:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/runtime/canonicalize.py`
+- `opsspec/runtime/normalize.py`
+  - id/nodeId 재작성 없이 `meta.inputs`만 결정론적으로 정규화(중복 제거/정렬, scalar deps 포함)
 
-역할:
-- group 이름/순서 정규화(필요 시)
-- `nodeId` 재부여 + `"ref:nX"` rewrite(필요 시)
-- `meta.inputs` 결정적 재작성
+### 5-6) 종료 조건
+
+- 남은 tasks가 비면 종료
+- `RECURSIVE_MAX_STEPS`를 넘기면 fail-fast (디버그 번들에 남은 tasks 기록)
 
 ---
 
-## 8) Debug 번들(요청별 산출물)
+## 6) Debug 번들(요청별 산출물)
+
+`debug=true`일 때 성공 요청은 번들을 저장하고, 실패한 요청은 debug 설정과 무관하게 원인 추적을 위한 `99_error.json` 번들을 남깁니다.
 
 저장 위치:
-- `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/debug/<MMddhhmm>/`
+- `opsspec/debug/<MMddhhmm>/`
 
 대표 파일:
+- `00_trace.md` (inventory 변화 + step별 트리 스냅샷)
 - `00_request.json`
 - `01_context.json`
-- `02_module1_decompose.json`
-- `03_module2_resolve_step1.json`
-- `03_module2_resolve_step2.json`
-- `03_module2_resolve_step3_llm.json`
-- `03_module2_resolve_final.json`
-- `04_module3_specify.json`
-- `05_final_grammar.json`
-- `06_draw_plan.json`
-- `07_tree_ops_spec.dot` (+ Graphviz가 있으면 `.svg/.png`)
+- `02_inventory.json` (LLM raw + prompt path/sha256 + llm config + validator 결과 포함)
+- per-step:
+  - `03_step_01_compose.json`
+  - `04_step_01_grounded.json`
+  - `05_step_01_op.json`
+  - `06_step_01_exec.json`
+- `90_final_grammar.json`
+- `91_tree_ops_spec.dot` (+ Graphviz가 있으면 `.svg/.png`)
+- `95_draw_plan.json` (옵션)
+- `99_error.json` (실패한 경우)
 
 구현:
-- `_persist_debug_bundle` in `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/pipeline.py`
+- `_persist_debug_bundle` in `opsspec/modules/pipeline.py`
+
+---
+
+## 7) operation 추가 시 변경 포인트 (contract-first)
+
+새 op 추가 시 “필수로” 건드려야 하는 포인트:
+1) Spec 모델 추가: `opsspec/specs/<new_op>.py`
+2) Union 등록: `opsspec/specs/union.py`
+3) 계약 등록: `opsspec/runtime/op_registry.py`
+4) 의미 검증 추가: `opsspec/validation/validators.py`
+5) 실행기 구현: `opsspec/runtime/executor.py`
+
+중요:
+- inventory/step-compose validator는 `build_ops_contract_for_prompt()`의 계약을 동적으로 사용하므로, pipeline 자체는 대부분 수정하지 않습니다.
+- executor는 모르는 op를 조용히 넘기지 않고 즉시 실패해야 합니다(누락이 바로 드러나도록).
+
+---
+
+## 8) 환경 변수(하드코딩 금지)
+
+- `RECURSIVE_MAX_STEPS` (default: 25)
+- `RECURSIVE_MAX_RETRIES` (default: 3)
+- `ARTIFACT_PREVIEW_N` (default: 5)

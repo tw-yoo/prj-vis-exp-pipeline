@@ -619,16 +619,16 @@ async def run_module_trace(request: RunModuleTraceRequest):
         debug=True,
     )
 
-    trace = result.trace.model_dump() if result.trace else {}
-    plan_tree = trace.get("decompose_plan", {}).get("plan_tree", {})
-    grounded_plan_tree = trace.get("resolve_plan", {}).get("grounded_plan_tree", {})
+    trace = result.trace.model_dump(mode="json") if result.trace else {}
+    inventory = trace.get("inventory", {}) if isinstance(trace, dict) else {}
+    steps = trace.get("steps", []) if isinstance(trace, dict) else []
     ops_spec = {
         group: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
         for group, ops in result.ops_spec.items()
     }
     return {
-        "plan_tree": plan_tree,
-        "grounded_plan_tree": grounded_plan_tree,
+        "inventory": inventory,
+        "steps": steps,
         "ops_spec": ops_spec,
         "trace": trace,
         "chart_context": result.chart_context.model_dump(mode="json"),

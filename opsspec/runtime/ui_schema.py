@@ -112,6 +112,10 @@ def _options_source_for_field(op_name: str, field_name: str) -> Optional[str]:
         if op_name in {"retrieveValue"}:
             return "fields"
         return "measure_fields"
+    if field_name in {"by"}:
+        return "dimension_fields"
+    if field_name in {"seriesField"}:
+        return "fields"
     return None
 
 
@@ -193,4 +197,3 @@ def build_op_registry_ui_schema() -> Dict[str, object]:
             "refFormat": "ref:nX",
         },
     }
-

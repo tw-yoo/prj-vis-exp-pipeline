@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..core.models import ChartContext
 from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS
+from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, SumOp
-from ..specs.compare import CompareBoolOp
+from ..specs.compare import CompareBoolOp, PairDiffOp
 from ..specs.filter import FilterOp
-from ..specs.range_sort_select import NthOp
+from ..specs.range_sort_select import FindExtremumOp, NthOp
+from ..specs.scale import ScaleOp
 from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
 from ..core.types import PrimitiveValue
+from ..core.utils import to_float
 
 
 def is_allowed_op(op_name: str) -> bool:
@@ -46,6 +50,8 @@ def _ensure_field_exists(field: str, chart_context: ChartContext) -> None:
 
 
 def _validate_include_exclude_domain(op: FilterOp, chart_context: ChartContext) -> None:
+    if not op.field:
+        return
     domain = chart_context.categorical_values.get(op.field)
     if not domain:
         return
@@ -56,6 +62,88 @@ def _validate_include_exclude_domain(op: FilterOp, chart_context: ChartContext) 
     for value in op.exclude or []:
         if str(value) not in domain_set:
             raise ValueError(f'filter exclude value "{value}" is outside domain for field "{op.field}"')
+
+
+def _normalize_group_selector(raw: Any) -> Optional[str | List[str]]:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        token = raw.strip()
+        if not token:
+            raise ValueError("filter group must be a non-empty string")
+        return token
+    if isinstance(raw, list):
+        if not raw:
+            raise ValueError("filter group list must contain at least one value")
+        out: List[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                raise ValueError("filter group list must contain strings only")
+            token = item.strip()
+            if not token:
+                raise ValueError("filter group list cannot contain empty strings")
+            if token not in out:
+                out.append(token)
+        if not out:
+            raise ValueError("filter group list must contain at least one non-empty value")
+        return out
+    raise ValueError("filter group must be a string or list of strings")
+
+
+def _validate_group_domain(group: Optional[str | List[str]], chart_context: ChartContext) -> None:
+    if not chart_context.series_field:
+        return
+    domain = chart_context.categorical_values.get(chart_context.series_field)
+    if not domain:
+        return
+    domain_set = {str(item) for item in domain}
+    values = [group] if isinstance(group, str) else list(group or [])
+    for value in values:
+        if value not in domain_set:
+            raise ValueError(
+                f'filter group value "{value}" is outside series domain for field "{chart_context.series_field}"'
+            )
+
+
+def _normalize_sum_group_selector(raw: Any) -> Optional[str | List[str]]:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        token = raw.strip()
+        if not token:
+            raise ValueError("sum group must be a non-empty string")
+        return token
+    if isinstance(raw, list):
+        if not raw:
+            raise ValueError("sum group list must contain at least one value")
+        out: List[str] = []
+        for item in raw:
+            if not isinstance(item, str):
+                raise ValueError("sum group list must contain strings only")
+            token = item.strip()
+            if not token:
+                raise ValueError("sum group list cannot contain empty strings")
+            if token not in out:
+                out.append(token)
+        if not out:
+            raise ValueError("sum group list must contain at least one non-empty value")
+        return out
+    raise ValueError("sum group must be a string or list of strings")
+
+
+def _validate_sum_group_domain(group: Optional[str | List[str]], chart_context: ChartContext) -> None:
+    if not chart_context.series_field or group is None:
+        return
+    domain = chart_context.categorical_values.get(chart_context.series_field)
+    if not domain:
+        return
+    domain_set = {str(item) for item in domain}
+    values = [group] if isinstance(group, str) else list(group)
+    for value in values:
+        if value not in domain_set:
+            raise ValueError(
+                f'sum group value "{value}" is outside series domain for field "{chart_context.series_field}"'
+            )
 
 
 def validate_filter_spec(
@@ -72,15 +160,17 @@ def validate_filter_spec(
         updated = updated.model_copy(update={"field": chart_context.primary_measure})
         warnings.append(f'filter generic field "value" replaced with primary_measure "{chart_context.primary_measure}"')
 
-    _ensure_field_exists(updated.field, chart_context)
-
     # Enforce semantic single-path rules to reduce equivalent representations:
     # - Do NOT filter on series_field directly; series restriction must be encoded via op.group.
     if chart_context.series_field and updated.field == chart_context.series_field:
         raise ValueError(
             f'filter on series_field "{chart_context.series_field}" is forbidden; '
-            'restrict series via op.group="<series value>" instead.'
+            'restrict series via op.group="<series value>" or op.group=["A","B"] instead.'
         )
+
+    normalized_group = _normalize_group_selector(updated.group)
+    updated = updated.model_copy(update={"group": normalized_group})
+    _validate_group_domain(normalized_group, chart_context)
 
     has_include = bool(updated.include)
     has_exclude = bool(updated.exclude)
@@ -89,9 +179,10 @@ def validate_filter_spec(
 
     membership_mode = has_include or has_exclude
     comparison_mode = has_operator or has_value
+    group_only_mode = bool(updated.group) and not membership_mode and not comparison_mode
 
-    if not membership_mode and not comparison_mode:
-        raise ValueError('filter requires either membership(include/exclude) or comparison(operator/value)')
+    if not membership_mode and not comparison_mode and not group_only_mode:
+        raise ValueError('filter requires one mode: membership(include/exclude), comparison(operator/value), or group-only')
     if membership_mode and comparison_mode:
         raise ValueError("filter cannot mix membership(include/exclude) and comparison(operator/value)")
     if has_operator and not has_value:
@@ -99,19 +190,41 @@ def validate_filter_spec(
     if has_value and not has_operator:
         raise ValueError('filter requires "operator" when "value" is provided')
 
-    # Membership filters must select targets on the primary dimension only (x-axis).
-    # This matches the legacy engine semantics and removes ambiguous representations.
-    if membership_mode and updated.field != chart_context.primary_dimension:
-        raise ValueError(
-            f'filter membership mode must use primary_dimension "{chart_context.primary_dimension}", '
-            f'got "{updated.field}"'
-        )
+    if membership_mode or comparison_mode:
+        if not updated.field:
+            raise ValueError('filter field is required for membership/comparison modes')
+        _ensure_field_exists(updated.field, chart_context)
 
-    # Comparison filters must compare numeric measure values.
-    if comparison_mode and chart_context.measure_fields and updated.field not in chart_context.measure_fields:
+    if membership_mode:
+        field = updated.field or ""
+        is_categorical = (
+            chart_context.field_types.get(field) == "categorical"
+            or field in chart_context.categorical_values
+            or field in chart_context.dimension_fields
+        )
+        if not is_categorical:
+            raise ValueError(f'filter membership mode requires categorical field, got "{field}"')
+
+    if comparison_mode and updated.operator == "between":
+        if not isinstance(updated.value, list) or len(updated.value) != 2:
+            raise ValueError("filter between requires value=[start,end]")
+        for boundary in updated.value:
+            if not isinstance(boundary, (str, int, float)):
+                raise ValueError("filter between requires scalar boundaries in value=[start,end]")
+        domain = chart_context.categorical_values.get(updated.field or "")
+        if domain:
+            domain_set = {str(item) for item in domain}
+            for boundary in updated.value:
+                token = str(boundary)
+                if token not in domain_set:
+                    raise ValueError(
+                        f'filter between boundary "{boundary}" is outside domain for field "{updated.field}"'
+                    )
+    # Non-between comparison filters must compare numeric measure values.
+    elif comparison_mode and chart_context.measure_fields and updated.field not in chart_context.measure_fields:
         raise ValueError(f'filter comparison mode requires numeric measure field, got "{updated.field}"')
 
-    if runtime_scalars is not None and has_value:
+    if runtime_scalars is not None and comparison_mode and has_value:
         resolved, warn = _resolve_scalar_reference(updated.value, runtime_scalars)
         if warn:
             warnings.append(warn)
@@ -162,9 +275,19 @@ def validate_operation(
     if isinstance(op, FilterOp):
         return validate_filter_spec(op, chart_context=chart_context, runtime_scalars=runtime_scalars)
 
-    if isinstance(op, (AverageOp, SumOp)):
+    if isinstance(op, AverageOp):
         updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
         warnings.extend(op_warnings)
+        return updated, warnings
+
+    if isinstance(op, SumOp):
+        if chart_context.mark != "bar":
+            raise ValueError('sum is allowed only for bar charts (chart_context.mark must be "bar")')
+        updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
+        warnings.extend(op_warnings)
+        normalized_group = _normalize_sum_group_selector(updated.group)
+        updated = updated.model_copy(update={"group": normalized_group})
+        _validate_sum_group_domain(normalized_group, chart_context)
         return updated, warnings
 
     if isinstance(op, SetOp):
@@ -172,8 +295,59 @@ def validate_operation(
             raise ValueError('setOp requires meta.inputs with at least two nodeIds')
         return op, warnings
 
+    if isinstance(op, ScaleOp):
+        target = op.target
+        if isinstance(target, str):
+            if re.fullmatch(r"ref:n\d+", target) is None:
+                raise ValueError('scale target must be numeric literal or scalar ref string format "ref:n<digits>"')
+        elif to_float(target) is None:
+            raise ValueError("scale target must be numeric literal or scalar ref")
+        return op, warnings
+
+    if isinstance(op, AddOp):
+        for key, value in (("targetA", op.targetA), ("targetB", op.targetB)):
+            if isinstance(value, str):
+                if re.fullmatch(r"ref:n\d+", value) is None and to_float(value) is None:
+                    raise ValueError(
+                        f'add {key} must be numeric literal or scalar ref string format "ref:n<digits>"'
+                    )
+            elif to_float(value) is None:
+                raise ValueError(f"add {key} must be numeric literal or scalar ref")
+        return op, warnings
+
+    if isinstance(op, PairDiffOp):
+        if op.by not in chart_context.fields:
+            raise ValueError(f'pairDiff by field "{op.by}" must be one of chart_context.fields')
+        if chart_context.dimension_fields and op.by not in chart_context.dimension_fields:
+            raise ValueError(f'pairDiff by field "{op.by}" must be a dimension field')
+
+        series_field = op.seriesField or chart_context.series_field
+        if not series_field:
+            raise ValueError("pairDiff requires seriesField or chart_context.series_field")
+        if series_field not in chart_context.fields:
+            raise ValueError(f'pairDiff seriesField "{series_field}" must be one of chart_context.fields')
+
+        series_domain = chart_context.categorical_values.get(series_field, [])
+        domain_set = {str(v) for v in series_domain}
+        if op.groupA not in domain_set:
+            raise ValueError(f'pairDiff groupA "{op.groupA}" is outside domain of seriesField "{series_field}"')
+        if op.groupB not in domain_set:
+            raise ValueError(f'pairDiff groupB "{op.groupB}" is outside domain of seriesField "{series_field}"')
+        if op.groupA == op.groupB:
+            raise ValueError("pairDiff requires groupA and groupB to be different")
+        if op.precision is not None and op.precision < 0:
+            raise ValueError("pairDiff precision must be >= 0")
+        updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
+        warnings.extend(op_warnings)
+        return updated, warnings
+
     if isinstance(op, CompareBoolOp) and not op.operator:
         raise ValueError("compareBool requires operator")
+
+    if isinstance(op, FindExtremumOp):
+        if op.rank is not None and op.rank < 1:
+            raise ValueError("findExtremum rank must be >= 1")
+        return op, warnings
 
     if isinstance(op, NthOp) and op.n is None:
         raise ValueError("nth requires n")

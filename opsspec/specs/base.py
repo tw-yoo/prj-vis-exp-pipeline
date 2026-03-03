@@ -11,6 +11,8 @@ class OpsMetaView(BaseModel):
     highlight: Optional[bool] = None
     reference_line: Optional[bool] = None
     note: Optional[str] = None
+    phase: Optional[int] = None
+    parallelGroup: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
 

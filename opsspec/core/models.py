@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.types import constr
 
-from ..specs.base import OpsMetaView
 from ..specs.union import OperationSpec
 from .types import JsonValue, PrimitiveValue
 
@@ -36,48 +35,33 @@ class ChartContext(BaseModel):
 
 
 NodeId = constr(pattern=r"^n[0-9]+$")  # type: ignore[valid-type]
-# Sentence-layer groups only:
+
+# Sentence-layer groups:
 # - sentence 1 -> "ops"
 # - sentence k -> f"ops{k}" for k>=2
 GroupName = constr(pattern=r"^(ops|ops[2-9]|ops[1-9][0-9]+)$")  # type: ignore[valid-type]
 
-# Decompose/Ground plan params must be flat to avoid invented nested schemas.
-FlatValue = Union[str, int, float, bool, None, List[Union[str, int, float, bool, None]]]
 
-
-class PlanNode(BaseModel):
+class RecursiveStepTrace(BaseModel):
+    step: int = Field(..., ge=1)
+    taskId: str = Field(..., min_length=1)
     nodeId: NodeId
+    groupName: GroupName
     op: str = Field(..., min_length=1)
-    group: GroupName = "ops"
-    params: Dict[str, FlatValue] = Field(default_factory=dict)
     inputs: List[NodeId] = Field(default_factory=list)
-    sentenceIndex: int = Field(..., ge=1)
-    view: Optional[OpsMetaView] = None
-    id: Optional[str] = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class PlanTree(BaseModel):
-    nodes: List[PlanNode] = Field(default_factory=list)
+    scalarRefs: List[NodeId] = Field(default_factory=list)
+    grounded_op_spec: Dict[str, JsonValue] = Field(default_factory=dict)
+    artifact: Dict[str, JsonValue] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
 
-class GroundedPlanTree(BaseModel):
-    nodes: List[PlanNode] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class PipelineTrace(BaseModel):
-    context_built: Dict[str, JsonValue]
-    decompose_plan: Dict[str, JsonValue]
-    resolve_plan: Dict[str, JsonValue]
-    specify_opsspec: Dict[str, JsonValue]
-    canonicalized: Dict[str, JsonValue]
+class RecursivePipelineTrace(BaseModel):
+    context_built: Dict[str, JsonValue] = Field(default_factory=dict)
+    inventory: Dict[str, JsonValue] = Field(default_factory=dict)
+    steps: List[RecursiveStepTrace] = Field(default_factory=list)
+    finalized: Dict[str, JsonValue] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -86,6 +70,6 @@ class GenerateOpsSpecResponse(BaseModel):
     ops_spec: Dict[str, List[OperationSpec]] = Field(default_factory=dict)
     chart_context: ChartContext
     warnings: List[str] = Field(default_factory=list)
-    trace: Optional[PipelineTrace] = None
+    trace: Optional[RecursivePipelineTrace] = None
 
     model_config = ConfigDict(extra="forbid")

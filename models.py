@@ -2,7 +2,7 @@ from typing import List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from opsspec.core.models import ChartContext as OpsChartContext, PipelineTrace
+from opsspec.core.models import ChartContext as OpsChartContext, RecursivePipelineTrace
 from opsspec.specs.union import OperationSpec
 
 
@@ -140,7 +140,7 @@ class GenerateGrammarRequest(BaseModel):
     explanation: str = Field(..., min_length=1)
     vega_lite_spec: dict = Field(..., description="Vega-Lite spec JSON")
     data_rows: list[dict] = Field(..., description="Raw data rows (<500 lines assumed)")
-    debug: bool = False
+    debug: bool = True
 
     model_config = ConfigDict(extra="forbid")
 
@@ -149,7 +149,7 @@ class GenerateGrammarResponse(BaseModel):
     ops_spec: dict[str, list[OperationSpec]] = Field(default_factory=dict)
     chart_context: OpsChartContext
     warnings: list[str] = Field(default_factory=list)
-    trace: PipelineTrace | None = None
+    trace: RecursivePipelineTrace | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -221,8 +221,8 @@ class RunModuleTraceRequest(BaseModel):
 
 
 class RunModuleTraceResponse(BaseModel):
-    plan_tree: dict = Field(default_factory=dict)
-    grounded_plan_tree: dict = Field(default_factory=dict)
+    inventory: dict = Field(default_factory=dict)
+    steps: list[dict] = Field(default_factory=list)
     ops_spec: dict = Field(default_factory=dict)
     trace: dict = Field(default_factory=dict)
     chart_context: dict = Field(default_factory=dict)

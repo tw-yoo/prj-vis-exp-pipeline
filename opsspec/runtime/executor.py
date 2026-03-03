@@ -5,10 +5,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..core.datum import DatumValue
 from ..core.models import ChartContext
+from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
-from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp
+from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import DetermineRangeOp, FindExtremumOp, NthOp, SortOp
+from ..specs.scale import ScaleOp
 from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
 from ..core.utils import to_float
@@ -19,7 +21,7 @@ def normalize_rows_to_datum_values(rows: List[Dict[str, Any]], chart_context: Ch
     dim = chart_context.primary_dimension
     measure = chart_context.primary_measure
     series_field = chart_context.series_field
-    for row in rows:
+    for idx, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
         target = str(row.get(dim, "")).strip()
@@ -39,7 +41,7 @@ def normalize_rows_to_datum_values(rows: List[Dict[str, Any]], chart_context: Ch
                 target=target,
                 group=group,
                 value=numeric,
-                id=str(row.get("id")) if row.get("id") is not None else None,
+                id=f"r{idx}",
                 name=str(row.get("name")) if row.get("name") is not None else None,
                 lookup_id=str(row.get("lookupId")) if row.get("lookupId") is not None else None,
                 series=group,
@@ -52,6 +54,7 @@ class OpsSpecExecutor:
     def __init__(self, chart_context: ChartContext) -> None:
         self.chart_context = chart_context
         self.runtime: Dict[str, List[DatumValue]] = {}
+        self._row_by_id: Dict[str, Dict[str, Any]] = {}
 
     def execute(
         self,
@@ -59,6 +62,10 @@ class OpsSpecExecutor:
         rows: List[Dict[str, Any]],
         ops_spec: Dict[str, List[OperationSpec]],
     ) -> Dict[str, List[DatumValue]]:
+        self._row_by_id = {}
+        for idx, raw in enumerate(rows):
+            if isinstance(raw, dict):
+                self._row_by_id[f"r{idx}"] = raw
         base = normalize_rows_to_datum_values(rows, self.chart_context)
         # Sentence-layer mode: groups represent explanation sentences, and nodes inside a
         # group may be parallel (no implicit chaining). Execute as a DAG based on meta.inputs
@@ -162,18 +169,39 @@ class OpsSpecExecutor:
             return self._op_diff(data, op)
         if isinstance(op, LagDiffOp):
             return self._op_lag_diff(data, op)
+        if isinstance(op, PairDiffOp):
+            return self._op_pair_diff(data, op)
         if isinstance(op, NthOp):
             return self._op_nth(data, op)
         if isinstance(op, CountOp):
             return self._op_count(data, op)
+        if isinstance(op, ScaleOp):
+            return self._op_scale(data, op)
+        if isinstance(op, AddOp):
+            return self._op_add(data, op)
         if isinstance(op, SetOp):
             return self._op_set_op(data, op)
-        return data
+        raise NotImplementedError(f"Executor does not implement op: {op.op}")
 
-    def _slice_by_group(self, data: List[DatumValue], group: Optional[str]) -> List[DatumValue]:
+    def _slice_by_group(self, data: List[DatumValue], group: Optional[str | List[str]]) -> List[DatumValue]:
         if not group:
             return data
-        return [item for item in data if (item.group or "") == group]
+        if isinstance(group, str):
+            token = group.strip()
+            if not token:
+                return []
+            return [item for item in data if (item.group or "") == token]
+        allowed: List[str] = []
+        for raw in group:
+            if not isinstance(raw, str):
+                continue
+            token = raw.strip()
+            if token and token not in allowed:
+                allowed.append(token)
+        if not allowed:
+            return []
+        allowed_set = set(allowed)
+        return [item for item in data if (item.group or "") in allowed_set]
 
     def _infer_field_kind(self, field: Optional[str]) -> Optional[str]:
         if not field:
@@ -199,7 +227,7 @@ class OpsSpecExecutor:
             series_text = str(series) if series is not None else None
             return target_text, series_text, None
         if isinstance(selector, str) and selector.startswith("ref:n"):
-            # Scalar reference to a prior node's output, expressed in PlanTree style.
+            # Scalar reference to a prior node's output, expressed as a string "ref:nX".
             return None, None, selector[len("ref:") :]
         if selector is None:
             return None, default_group, None
@@ -294,14 +322,62 @@ class OpsSpecExecutor:
         sliced = self._slice_by_group(data, op.group)
         include_set = {str(v) for v in (op.include or [])}
         exclude_set = {str(v) for v in (op.exclude or [])}
+        filter_field = op.field or self.chart_context.primary_dimension
+        use_target = filter_field in {"target", self.chart_context.primary_dimension}
         if include_set or exclude_set:
-            sliced = [
-                item
-                for item in sliced
-                if (not include_set or item.target in include_set) and (not exclude_set or item.target not in exclude_set)
-            ]
+            filtered: List[DatumValue] = []
+            for item in sliced:
+                candidate: Optional[str]
+                if use_target:
+                    candidate = item.target
+                else:
+                    raw_row = self._row_by_id.get(item.id or "")
+                    if not raw_row:
+                        continue
+                    raw_value = raw_row.get(filter_field)
+                    if raw_value is None:
+                        continue
+                    candidate = str(raw_value)
+                if include_set and candidate not in include_set:
+                    continue
+                if exclude_set and candidate in exclude_set:
+                    continue
+                filtered.append(item)
+            sliced = filtered
         if not op.operator:
             return sliced
+
+        if op.operator == "between":
+            boundaries = op.value if isinstance(op.value, list) else None
+            if not boundaries or len(boundaries) != 2:
+                raise ValueError("filter between requires value=[start,end]")
+            start, end = str(boundaries[0]), str(boundaries[1])
+            start_idx: Optional[int] = None
+            end_idx: Optional[int] = None
+            for idx, item in enumerate(sliced):
+                candidate: Optional[str]
+                if use_target:
+                    candidate = item.target
+                else:
+                    raw_row = self._row_by_id.get(item.id or "")
+                    if not raw_row:
+                        continue
+                    raw_value = raw_row.get(filter_field)
+                    if raw_value is None:
+                        continue
+                    candidate = str(raw_value)
+                if start_idx is None:
+                    if candidate == start:
+                        start_idx = idx
+                    continue
+                if candidate == end:
+                    end_idx = idx
+                    break
+            if start_idx is None:
+                raise ValueError(f'filter between start "{start}" not found in selected slice')
+            if end_idx is None:
+                raise ValueError(f'filter between end "{end}" not found after start "{start}" in selected slice')
+            return sliced[start_idx : end_idx + 1]
 
         right = self._resolve_scalar_ref(op.value)
         if right is None and op.value is not None and not isinstance(op.value, dict):
@@ -320,9 +396,12 @@ class OpsSpecExecutor:
         sliced = self._slice_by_group(data, op.group)
         if not sliced:
             return []
+        rank = op.rank or 1
+        if rank > len(sliced):
+            raise ValueError(f"findExtremum rank={rank} exceeds available rows ({len(sliced)}) for the selected slice")
         pick_max = op.which != "min"
         sorted_values = sorted(sliced, key=lambda item: self._value_key(item, op.field))
-        return [sorted_values[-1] if pick_max else sorted_values[0]]
+        return [sorted_values[-rank] if pick_max else sorted_values[rank - 1]]
 
     def _op_determine_range(self, data: List[DatumValue], op: DetermineRangeOp) -> List[DatumValue]:
         sliced = self._slice_by_group(data, op.group)
@@ -376,7 +455,37 @@ class OpsSpecExecutor:
         return sorted(sliced, key=lambda item: self._value_key(item, op.field), reverse=reverse)
 
     def _op_sum(self, data: List[DatumValue], op: SumOp) -> List[DatumValue]:
-        sliced = self._slice_by_group(data, op.group)
+        # sum is validated as bar-only. If bypassed, keep legacy-safe behavior.
+        if self.chart_context.mark != "bar":
+            sliced = self._slice_by_group(data, op.group)
+            value = sum(item.value for item in sliced)
+            return self._make_scalar(value=value, label="__sum__", group=op.group, measure=op.field)
+
+        if not self.chart_context.is_stacked:
+            sliced = self._slice_by_group(data, op.group)
+            value = sum(item.value for item in sliced)
+            return self._make_scalar(value=value, label="__sum__", group=op.group, measure=op.field)
+
+        # stacked bar special rule:
+        # - group is None or multi-group -> sum across all values
+        # - group is one value -> sum that group only
+        raw_group = op.group
+        if raw_group is None:
+            sliced = data
+        elif isinstance(raw_group, str):
+            token = raw_group.strip()
+            sliced = self._slice_by_group(data, token) if token else data
+        elif isinstance(raw_group, list):
+            normalized = [str(x).strip() for x in raw_group if isinstance(x, str) and str(x).strip()]
+            unique = list(dict.fromkeys(normalized))
+            if len(unique) >= 2:
+                sliced = data
+            elif len(unique) == 1:
+                sliced = self._slice_by_group(data, unique[0])
+            else:
+                sliced = data
+        else:
+            sliced = data
         value = sum(item.value for item in sliced)
         return self._make_scalar(value=value, label="__sum__", group=op.group, measure=op.field)
 
@@ -435,6 +544,65 @@ class OpsSpecExecutor:
             )
         return out
 
+    def _op_pair_diff(self, data: List[DatumValue], op: PairDiffOp) -> List[DatumValue]:
+        sliced = self._slice_by_group(data, op.group)
+        series_field = op.seriesField or self.chart_context.series_field
+        by_field = op.by
+        measure_field = op.field or self.chart_context.primary_measure
+        if not series_field:
+            return []
+
+        left_by_key: Dict[str, List[float]] = {}
+        right_by_key: Dict[str, List[float]] = {}
+        for item in sliced:
+            if not item.id:
+                continue
+            row = self._row_by_id.get(item.id)
+            if not isinstance(row, dict):
+                continue
+            key_raw = row.get(by_field)
+            if key_raw is None:
+                continue
+            key = str(key_raw).strip()
+            if not key:
+                continue
+            series_raw = row.get(series_field)
+            if series_raw is None:
+                continue
+            series = str(series_raw).strip()
+            value = to_float(row.get(measure_field))
+            if value is None:
+                continue
+
+            if series == op.groupA:
+                left_by_key.setdefault(key, []).append(float(value))
+            elif series == op.groupB:
+                right_by_key.setdefault(key, []).append(float(value))
+
+        common_targets = sorted(set(left_by_key.keys()) & set(right_by_key.keys()), key=lambda x: str(x))
+        out: List[DatumValue] = []
+        result_group = f"{op.groupA}-{op.groupB}"
+        result_measure = measure_field
+        for target in common_targets:
+            left = self._aggregate(left_by_key[target], None)
+            right = self._aggregate(right_by_key[target], None)
+            delta = left - right
+            if op.absolute or op.signed is False:
+                delta = abs(delta)
+            if op.precision is not None:
+                delta = round(delta, max(0, op.precision))
+            out.append(
+                DatumValue(
+                    category=op.by,
+                    measure=result_measure,
+                    target=str(target),
+                    group=result_group,
+                    value=float(delta),
+                    name="__pairDiff__",
+                )
+            )
+        return out
+
     def _op_nth(self, data: List[DatumValue], op: NthOp) -> List[DatumValue]:
         if op.n is None:
             return []
@@ -452,6 +620,22 @@ class OpsSpecExecutor:
     def _op_count(self, data: List[DatumValue], op: CountOp) -> List[DatumValue]:
         sliced = self._slice_by_group(data, op.group)
         return self._make_scalar(value=float(len(sliced)), label="__count__", group=op.group, measure=op.field)
+
+    def _op_scale(self, data: List[DatumValue], op: ScaleOp) -> List[DatumValue]:
+        base = self._resolve_scalar_ref(op.target)
+        if base is None:
+            return []
+        result = float(base) * float(op.factor)
+        return self._make_scalar(value=result, label="__scale__", group=op.group, measure=op.field)
+
+    def _op_add(self, data: List[DatumValue], op: AddOp) -> List[DatumValue]:
+        _ = data
+        left = self._resolve_scalar_ref(op.targetA)
+        right = self._resolve_scalar_ref(op.targetB)
+        if left is None or right is None:
+            return []
+        result = float(left) + float(right)
+        return self._make_scalar(value=result, label="__add__", group=op.group, measure=op.field)
 
     def _op_set_op(self, data: List[DatumValue], op: SetOp) -> List[DatumValue]:
         _ = data

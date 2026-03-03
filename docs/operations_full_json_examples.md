@@ -5,7 +5,7 @@ This document lists JSON examples for each supported non-draw operation in `nlp_
 Notes:
 - Every operation MUST include `meta.inputs` (empty list `[]` is allowed).
 - Cross-node scalar references MUST use `"ref:n<digits>"` strings (example: `"ref:n1"`).
-- `filter` has two mutually exclusive modes: membership (`include`/`exclude`) vs comparison (`operator`+`value`).
+- `filter` supports three modes: membership (`include`/`exclude`), comparison (`operator`+`value`), and group-only (`group` only).
 
 ## Common Fields (All Ops)
 
@@ -59,6 +59,19 @@ Notes:
 }
 ```
 
+## filter (membership on non-primary categorical field)
+
+```json
+{
+  "op": "filter",
+  "id": "n1b",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n1b", "inputs": [], "sentenceIndex": 1 },
+  "field": "Frequency",
+  "include": ["Occasionally (less than once a month)"]
+}
+```
+
 ## filter (comparison mode)
 
 ```json
@@ -74,6 +87,61 @@ Notes:
 }
 ```
 
+## filter (between row-order interval)
+
+```json
+{
+  "op": "filter",
+  "id": "n2b",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n2b", "inputs": [], "sentenceIndex": 1 },
+  "field": "Year",
+  "operator": "between",
+  "value": ["2009", "2014"]
+}
+```
+
+## filter (multi-group OR)
+
+```json
+{
+  "op": "filter",
+  "id": "n3",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n3", "inputs": [], "sentenceIndex": 2 },
+  "field": "Season",
+  "include": ["2016/17", "2017/18"],
+  "group": ["Broadcasting", "Commercial"]
+}
+```
+
+## filter (comparison mode + multi-group OR)
+
+```json
+{
+  "op": "filter",
+  "id": "n4",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n4", "inputs": ["n1"], "sentenceIndex": 2 },
+  "field": "Revenue_Million_Euros",
+  "operator": ">",
+  "value": "ref:n1",
+  "group": ["Broadcasting", "Commercial"]
+}
+```
+
+## filter (group-only series restriction)
+
+```json
+{
+  "op": "filter",
+  "id": "n5",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n5", "inputs": [], "sentenceIndex": 1 },
+  "group": ["Philippines", "Thailand"]
+}
+```
+
 ## findExtremum
 
 ```json
@@ -85,6 +153,34 @@ Notes:
   "field": "Revenue_Million_Euros",
   "group": "Broadcasting",
   "which": "max"
+}
+```
+
+## findExtremum (second highest)
+
+```json
+{
+  "op": "findExtremum",
+  "id": "n3b",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n3b", "inputs": ["n2"], "sentenceIndex": 2 },
+  "field": "Revenue_Million_Euros",
+  "which": "max",
+  "rank": 2
+}
+```
+
+## findExtremum (second lowest)
+
+```json
+{
+  "op": "findExtremum",
+  "id": "n3c",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n3c", "inputs": ["n2"], "sentenceIndex": 2 },
+  "field": "Revenue_Million_Euros",
+  "which": "min",
+  "rank": 2
 }
 ```
 
@@ -167,6 +263,11 @@ Notes:
 }
 ```
 
+Notes:
+- `sum` is allowed only for bar charts.
+- `group` can be `"A"` or `["A","B"]`.
+- For stacked bar, `group` omitted or multi-group means sum all values.
+
 ## average
 
 ```json
@@ -219,14 +320,49 @@ Notes:
 }
 ```
 
+## pairDiff
+
+```json
+{
+  "op": "pairDiff",
+  "id": "n12",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n12", "inputs": [], "sentenceIndex": 2 },
+  "by": "Season",
+  "seriesField": "category",
+  "field": "Revenue_Million_Euros",
+  "groupA": "Broadcasting",
+  "groupB": "Commercial",
+  "signed": true,
+  "absolute": false,
+  "precision": 2
+}
+```
+
+Grouped-bar example (City-wise 2025-2010):
+
+```json
+{
+  "op": "pairDiff",
+  "id": "n13",
+  "meta": { "nodeId": "n13", "inputs": [], "sentenceIndex": 2 },
+  "by": "City",
+  "seriesField": "Year",
+  "field": "Population in millions",
+  "groupA": "2025",
+  "groupB": "2010",
+  "signed": true
+}
+```
+
 ## nth
 
 ```json
 {
   "op": "nth",
-  "id": "n12",
+  "id": "n13",
   "chartId": "chart-1",
-  "meta": { "nodeId": "n12", "inputs": ["n7"], "sentenceIndex": 5 },
+  "meta": { "nodeId": "n13", "inputs": ["n7"], "sentenceIndex": 5 },
   "field": "Revenue_Million_Euros",
   "group": "Broadcasting",
   "order": "desc",
@@ -241,11 +377,39 @@ Notes:
 ```json
 {
   "op": "count",
-  "id": "n13",
+  "id": "n14",
   "chartId": "chart-1",
-  "meta": { "nodeId": "n13", "inputs": ["n2"], "sentenceIndex": 2 },
+  "meta": { "nodeId": "n14", "inputs": ["n2"], "sentenceIndex": 2 },
   "field": "Revenue_Million_Euros",
   "group": "Broadcasting"
+}
+```
+
+## scale
+
+```json
+{
+  "op": "scale",
+  "id": "n15",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n15", "inputs": ["n9"], "sentenceIndex": 6 },
+  "target": "ref:n9",
+  "factor": 2.0,
+  "field": "Revenue_Million_Euros"
+}
+```
+
+## add
+
+```json
+{
+  "op": "add",
+  "id": "n16",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n16", "inputs": ["n2", "n4"], "sentenceIndex": 3 },
+  "targetA": "ref:n2",
+  "targetB": "ref:n4",
+  "field": "Average weight in metric grams"
 }
 ```
 
@@ -254,9 +418,9 @@ Notes:
 ```json
 {
   "op": "setOp",
-  "id": "n14",
+  "id": "n17",
   "chartId": "chart-1",
-  "meta": { "nodeId": "n14", "inputs": ["n2", "n4"], "sentenceIndex": 6 },
+  "meta": { "nodeId": "n17", "inputs": ["n2", "n4"], "sentenceIndex": 6 },
   "fn": "intersection",
   "group": "result"
 }

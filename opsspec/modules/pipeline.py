@@ -1,27 +1,38 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from draw_plan import build_draw_ops_spec, export_draw_plan_to_public
+from opsspec.runtime.scheduler import schedule_ops_spec
 
-from ..runtime.canonicalize import canonicalize_ops_spec_groups
-from ..runtime.context_builder import build_chart_context
 from ..core.llm import StructuredLLMClient
+from ..core.models import ChartContext, GenerateOpsSpecResponse, RecursivePipelineTrace, RecursiveStepTrace
+from ..core.recursive_models import OpTask
 from ..core.utils import prune_nulls
-from ..core.models import ChartContext, GenerateOpsSpecResponse, GroundedPlanTree, PipelineTrace, PlanTree
-from .module_decompose import run_decompose_module
-from .module_resolve import run_resolve_module
-from .module_specify import run_specify_module
+from ..runtime.artifacts import extract_scalar_ref_deps, summarize_runtime_values
+from ..runtime.context_builder import build_chart_context
+from ..runtime.executor import OpsSpecExecutor
+from ..runtime.grounding import ground_op_spec
+from ..runtime.normalize import normalize_meta_inputs
 from ..runtime.op_registry import build_ops_contract_for_prompt
-from ..validation.plan_validators import infer_goal_type, validate_plan_against_intent, validate_plan_tree
 from ..specs.union import OperationSpec, parse_operation_spec
+from ..validation.recursive_validators import validate_inventory, validate_step_compose_output
 from ..validation.validators import validate_operation
+from .module_inventory import run_inventory_module
+from .prompt_examples import (
+    build_inventory_few_shot_examples,
+    build_step_compose_few_shot_examples,
+    tune_few_shot_budget,
+)
+from .module_step_compose import run_step_compose_module
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("pipeline_trace")
@@ -32,6 +43,10 @@ def _load_prompt(path: Path) -> str:
     if not text.strip():
         raise RuntimeError(f"Prompt file is empty: {path}")
     return text
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _debug_root_dir() -> Path:
@@ -55,8 +70,8 @@ def _create_debug_session_dir() -> Path:
         suffix += 1
 
 
-def _write_json(path: Path, payload: Dict[str, Any]) -> None:
-    path.write_text(json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2), encoding="utf-8")
+def _write_json(path: Path, payload: Any) -> None:
+    path.write_text(json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _escape_dot_label(text: str) -> str:
@@ -72,9 +87,6 @@ def _group_color(name: str) -> str:
 
 
 def _build_ops_spec_dot(groups: Dict[str, Any]) -> str:
-    # Build a DOT graph from final ops_spec groups.
-    # Each op is a node: meta.nodeId is used as the stable identifier.
-    # Edges follow meta.inputs (tree/DAG structure).
     node_meta: Dict[str, Dict[str, str]] = {}
     edges: List[Tuple[str, str]] = []
 
@@ -95,7 +107,6 @@ def _build_ops_spec_dot(groups: Dict[str, Any]) -> str:
             if isinstance(group_name, str) and group_name:
                 label_parts.append(f"({group_name})")
 
-            # Add a few useful params (small and stable) for debugging.
             field = op.get("field")
             if isinstance(field, str) and field:
                 label_parts.append(f"field={field}")
@@ -106,10 +117,7 @@ def _build_ops_spec_dot(groups: Dict[str, Any]) -> str:
             if isinstance(fn, str) and fn:
                 label_parts.append(f"fn={fn}")
 
-            node_meta[node_id] = {
-                "label": " ".join(label_parts),
-                "group": group_name,
-            }
+            node_meta[node_id] = {"label": " ".join(label_parts), "group": group_name}
 
             inputs = meta.get("inputs")
             if isinstance(inputs, list):
@@ -142,7 +150,7 @@ def _build_ops_spec_dot(groups: Dict[str, Any]) -> str:
         lines.append(f'  subgraph "{cluster_name}" {{')
         lines.append(f'    label="{_escape_dot_label(group_name)}";')
         lines.append('    color="#bbbbbb";')
-        lines.append(f'    style="rounded,filled";')
+        lines.append('    style="rounded,filled";')
         lines.append(f'    fillcolor="{_group_color(group_name)}";')
         for node_id in sorted(node_ids):
             label = node_meta[node_id]["label"]
@@ -158,7 +166,6 @@ def _build_ops_spec_dot(groups: Dict[str, Any]) -> str:
 
 
 def _try_render_dot(dot_path: Path, *, out_base: Path) -> List[str]:
-    # Render DOT via Graphviz if available. We avoid extra Python deps.
     warnings: List[str] = []
     dot_bin = shutil.which("dot")
     if not dot_bin:
@@ -178,158 +185,193 @@ def _try_render_dot(dot_path: Path, *, out_base: Path) -> List[str]:
     return warnings
 
 
-def _persist_debug_bundle(payloads: Dict[str, Dict[str, Any]]) -> Path:
+def _escape_mermaid_label(text: str) -> str:
+    return str(text).replace('"', '\\"')
+
+
+def _render_trace_markdown(
+    *,
+    tasks: List[OpTask],
+    steps_debug: List[Dict[str, Any]],
+    step_traces: List[RecursiveStepTrace],
+) -> str:
+    lines: List[str] = []
+    lines.append("# Recursive Grammar Trace")
+    lines.append("")
+    lines.append("## Inventory (S(O))")
+    lines.append(f"- total_tasks: {len(tasks)}")
+    lines.append("")
+    if tasks:
+        lines.append("| taskId | op | sentenceIndex | mention | paramsHint |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for task in tasks:
+            params = json.dumps(task.paramsHint, ensure_ascii=False)
+            mention = str(task.mention).replace("|", "\\|")
+            lines.append(f"| {task.taskId} | {task.op} | {task.sentenceIndex} | {mention} | `{params}` |")
+    else:
+        lines.append("_no tasks_")
+
+    lines.append("")
+    lines.append("## Steps")
+    if not step_traces:
+        lines.append("_no steps executed_")
+        return "\n".join(lines) + "\n"
+
+    for idx, step in enumerate(step_traces, start=1):
+        debug_entry = steps_debug[idx - 1] if idx - 1 < len(steps_debug) else {}
+        remaining_before = debug_entry.get("remaining_before") or []
+        remaining_after = debug_entry.get("remaining_after") or []
+
+        lines.append("")
+        lines.append(f"### Step {step.step}")
+        lines.append(f"- pickTaskId: {step.taskId}")
+        lines.append(f"- nodeId: {step.nodeId}")
+        lines.append(f"- op: {step.op}")
+        lines.append(f"- groupName: {step.groupName}")
+        lines.append(f"- inputs: {step.inputs}")
+        lines.append(f"- scalarRefs: {step.scalarRefs}")
+
+        lines.append("")
+        lines.append("#### Inventory delta")
+        lines.append(f"- remaining_before_count: {len(remaining_before)}")
+        lines.append(f"- remaining_after_count: {len(remaining_after)}")
+        lines.append(f"- remaining_before: {[t.get('taskId') for t in remaining_before]}")
+        lines.append(f"- remaining_after: {[t.get('taskId') for t in remaining_after]}")
+
+        lines.append("")
+        lines.append("#### Tree snapshot")
+        lines.append("```mermaid")
+        lines.append("flowchart LR")
+        for t in step_traces[:idx]:
+            label = _escape_mermaid_label(f"{t.nodeId}: {t.op}")
+            lines.append(f'  {t.nodeId}["{label}"]')
+        for t in step_traces[:idx]:
+            for inp in t.inputs:
+                lines.append(f"  {inp} --> {t.nodeId}")
+        lines.append("```")
+
+    lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
     session_dir = _create_debug_session_dir()
-    ordered = [
+
+    for filename, key in (
         ("00_request.json", "request"),
         ("01_context.json", "context"),
-        ("02_module1_decompose.json", "module1_decompose"),
-        # Module 2 Resolve: step-level + final
-        ("03_module2_resolve_step1.json", "module2_resolve_step1"),
-        ("03_module2_resolve_step2.json", "module2_resolve_step2"),
-        ("03_module2_resolve_step3_llm.json", "module2_resolve_step3_llm"),
-        ("03_module2_resolve_final.json", "module2_resolve_final"),
-        ("04_module3_specify.json", "module3_specify"),
-        ("05_final_grammar.json", "final_grammar"),
-        ("06_draw_plan.json", "draw_plan"),
+        ("02_inventory.json", "inventory"),
+        ("00_trace.md", "trace_md"),
+        ("90_final_grammar.json", "final_grammar"),
+        ("95_draw_plan.json", "draw_plan"),
         ("99_error.json", "error"),
-    ]
-    for filename, key in ordered:
+    ):
         data = payloads.get(key)
         if data is None:
             continue
-        _write_json(session_dir / filename, data)
+        if filename.endswith(".md"):
+            Path(session_dir / filename).write_text(str(data), encoding="utf-8")
+        else:
+            _write_json(session_dir / filename, data)
 
-    # Tree visualization (OpsSpec only): DOT always, SVG/PNG if graphviz is available.
+    steps = payloads.get("steps")
+    if isinstance(steps, list):
+        for idx, step in enumerate(steps, start=1):
+            if not isinstance(step, dict):
+                continue
+            compose = step.get("compose")
+            grounded = step.get("grounded")
+            op_dump = step.get("op")
+            exec_dump = step.get("exec")
+            if compose is not None:
+                _write_json(session_dir / f"03_step_{idx:02d}_compose.json", compose)
+            if grounded is not None:
+                _write_json(session_dir / f"04_step_{idx:02d}_grounded.json", grounded)
+            if op_dump is not None:
+                _write_json(session_dir / f"05_step_{idx:02d}_op.json", op_dump)
+            if exec_dump is not None:
+                _write_json(session_dir / f"06_step_{idx:02d}_exec.json", exec_dump)
+
     final_payload = payloads.get("final_grammar") or {}
     if isinstance(final_payload, dict):
         ops_spec = final_payload.get("ops_spec")
         if isinstance(ops_spec, dict):
             dot_text = _build_ops_spec_dot(ops_spec)
-            dot_path = session_dir / "07_tree_ops_spec.dot"
+            dot_path = session_dir / "91_tree_ops_spec.dot"
             dot_path.write_text(dot_text, encoding="utf-8")
-            render_warnings = _try_render_dot(dot_path, out_base=session_dir / "07_tree_ops_spec")
+            render_warnings = _try_render_dot(dot_path, out_base=session_dir / "91_tree_ops_spec")
             if render_warnings:
-                (session_dir / "07_tree_ops_spec_render_warnings.txt").write_text(
+                (session_dir / "91_tree_ops_spec_render_warnings.txt").write_text(
                     "\n".join(render_warnings) + "\n",
                     encoding="utf-8",
                 )
+
     return session_dir
 
 
-def _parse_and_validate_groups(
-    *,
-    raw_groups: Dict[str, Any],
-    chart_context: ChartContext,
-) -> Tuple[Dict[str, List[OperationSpec]], List[str]]:
-    parsed_groups: Dict[str, List[OperationSpec]] = {}
-    validation_warnings: List[str] = []
-    errors: List[str] = []
-
-    for group_name, ops in raw_groups.items():
-        if not isinstance(group_name, str):
-            errors.append("Group name must be string.")
-            continue
-        if group_name == "last":
-            errors.append('Group "last" is not allowed. Use sentence-layer groups only: "ops", "ops2", "ops3", ...')
-            continue
-        if group_name != "ops":
-            if not group_name.startswith("ops") or not group_name[3:].isdigit() or int(group_name[3:]) < 2:
-                errors.append(
-                    f'Invalid group name "{group_name}". Use sentence-layer groups only: "ops", "ops2", "ops3", ...'
-                )
-                continue
-        if not isinstance(ops, list):
-            errors.append(f'{group_name}: group value must be list, got "{type(ops).__name__}"')
-            continue
-
-        group_ops: List[OperationSpec] = []
-        for idx, raw_op in enumerate(ops):
-            if not isinstance(raw_op, dict):
-                errors.append(f"{group_name}[{idx}]: op entry must be object.")
-                continue
-            try:
-                op = parse_operation_spec(raw_op)
-            except Exception as exc:
-                errors.append(f"{group_name}[{idx}] schema error: {exc}")
-                continue
-
-            try:
-                normalized, op_warnings = validate_operation(op, chart_context=chart_context)
-            except Exception as exc:
-                errors.append(f"{group_name}[{idx}] semantic error: {exc}")
-                continue
-
-            group_ops.append(normalized)
-            validation_warnings.extend([f"{group_name}[{idx}]: {msg}" for msg in op_warnings])
-        parsed_groups[group_name] = group_ops
-
-    if errors:
-        raise ValueError("\n".join(errors))
-    return parsed_groups, validation_warnings
+def _group_name(sentence_index: int) -> str:
+    return "ops" if int(sentence_index) == 1 else f"ops{int(sentence_index)}"
 
 
-def _validate_compiled_groups_match_plan(
-    *,
-    plan_tree: GroundedPlanTree,
-    compiled_groups: Dict[str, List[OperationSpec]],
-) -> None:
+def _task_sort_key(task: OpTask) -> int:
+    raw = str(task.taskId)
+    try:
+        return int(raw[1:])
+    except Exception:
+        return 10**9
+
+
+def _llm_debug_config(llm: StructuredLLMClient) -> Dict[str, Any]:
+    # Keep stable and minimal. (Do not add secrets.)
+    return {
+        "backend": llm.backend,
+        "ollama_model": llm.ollama_model,
+        "ollama_base_url": llm.ollama_base_url,
+        "instructor_mode": llm.instructor_mode,
+        "OPENAI_MODEL": os.getenv("OPENAI_MODEL") if llm.backend == "openai_http" else None,
+        "OPENAI_BASE_URL": os.getenv("OPENAI_BASE_URL") if llm.backend == "openai_http" else None,
+        "LLM_BACKEND": os.getenv("LLM_BACKEND") or None,
+    }
+
+
+def _build_retry_feedback(attempt: int, max_retries: int, error: Exception) -> List[str]:
     """
-    Specify output must be a faithful translation of the plan:
-    - Every plan nodeId must appear exactly once as an OperationSpec meta.nodeId.
-    - No extra nodes are allowed.
-    - Group placement must match plan node.group.
-    - meta.sentenceIndex must match plan node.sentenceIndex.
+    Validation error를 LLM에게 전달할 structured retry feedback으로 변환.
+    Schema error / semantic error 유형을 구분해서 actionable 힌트를 제공.
     """
-    plan_nodes = list(plan_tree.nodes or [])
-    plan_ids = [n.nodeId for n in plan_nodes]
-    plan_by_id = {n.nodeId: n for n in plan_nodes}
+    err_str = str(error)
+    err_lower = err_str.lower()
+    lines = [f"[Attempt {attempt}/{max_retries} FAILED — fix and retry]"]
 
-    compiled_by_id: Dict[str, Tuple[str, OperationSpec]] = {}
-    for group_name, ops in compiled_groups.items():
-        for op in ops:
-            node_id = (op.meta.nodeId if op.meta else None) or op.id
-            if not isinstance(node_id, str) or not node_id:
-                continue
-            compiled_by_id[node_id] = (group_name, op)
+    if "schema error" in err_lower or "validation error" in err_lower or "field required" in err_lower:
+        lines.append("[Type: Schema] Output did not match the required JSON schema.")
+    elif "is not in allowed_ops" in err_str:
+        lines.append("[Type: Invalid Op] Used an op name that is not listed in allowed_ops.")
+    elif "filter" in err_lower and ("mode" in err_lower or "require" in err_lower or "membership" in err_lower):
+        lines.append("[Type: Filter Rule] A filter membership/comparison constraint was violated.")
+    elif "series" in err_lower or ("filter" in err_lower and "series_field" in err_lower):
+        lines.append("[Type: Series Rule] Series restriction rule violated; use op.group instead of filtering on series_field.")
+    elif "ref:" in err_lower or "scalar ref" in err_lower or "object reference" in err_lower:
+        lines.append('[Type: Ref Rule] Scalar reference rule violated; use "ref:nX" string format only, never {"id":"nX"}.')
+    elif "inputs" in err_lower and ("unknown" in err_lower or "future" in err_lower):
+        lines.append("[Type: Input Rule] inputs[] references a nodeId that does not exist yet.")
+    else:
+        lines.append("[Type: Semantic] A semantic or contract constraint was violated.")
 
-    compiled_ids = set(compiled_by_id.keys())
-    missing = sorted(set(plan_ids) - compiled_ids)
-    extra = sorted(compiled_ids - set(plan_ids))
-    errors: List[str] = []
-    if missing:
-        errors.append(f"specify output missing nodeIds from plan_tree: {missing[:12]}")
-    if extra:
-        errors.append(f"specify output has extra nodeIds not in plan_tree: {extra[:12]}")
-
-    for node_id, plan_node in plan_by_id.items():
-        entry = compiled_by_id.get(node_id)
-        if not entry:
-            continue
-        compiled_group, op = entry
-        if compiled_group != plan_node.group:
-            errors.append(
-                f'nodeId "{node_id}" must be placed in group "{plan_node.group}" (got "{compiled_group}").'
-            )
-        if not op.meta or op.meta.sentenceIndex is None:
-            errors.append(f'nodeId "{node_id}" is missing meta.sentenceIndex.')
-        elif op.meta.sentenceIndex != plan_node.sentenceIndex:
-            errors.append(
-                f'nodeId "{node_id}" meta.sentenceIndex must be {plan_node.sentenceIndex} (got {op.meta.sentenceIndex}).'
-            )
-
-    if errors:
-        raise ValueError("\n".join(errors))
-
-
-def _is_grounding_error(errors: List[str]) -> bool:
-    """Module 3 실패가 그라운딩 문제(필드/값 미존재)에서 비롯됐는지 판단."""
-    grounding_keywords = ("does not exist", "not in", "field", "domain", "not found", "semantic error")
-    combined = " ".join(errors).lower()
-    return any(kw in combined for kw in grounding_keywords)
+    lines.append(f"[Detail] {err_str}")
+    lines.append("[Action Required] Fix the specific issue above and return valid JSON only.")
+    return lines
 
 
 class OpsSpecPipeline:
+    """
+    Recursive Grammar Pipeline (MVP).
+
+    - Inventory: explanation -> S(O)
+    - Recursive loop: step-compose -> deterministic grounding/validation -> execute -> update artifacts
+    - Output: OpsSpec group map (sentence-layer groups) with meta.nodeId/meta.inputs edges
+    """
+
     def __init__(
         self,
         *,
@@ -344,25 +386,24 @@ class OpsSpecPipeline:
             ollama_api_key=ollama_api_key,
         )
         self.prompts_dir = prompts_dir
-        self.decompose_prompt: str | None = None
-        self.resolve_prompt: str | None = None
-        self.specify_prompt: str | None = None
-        self.shared_rules_prompt: str | None = None
+        self.inventory_prompt: Optional[str] = None
+        self.step_compose_prompt: Optional[str] = None
+        self.shared_rules_prompt: Optional[str] = None
+        self.inventory_prompt_path: Optional[Path] = None
+        self.step_compose_prompt_path: Optional[Path] = None
+        self.shared_rules_prompt_path: Optional[Path] = None
 
     def load(self) -> None:
         self.llm.load()
-        if (
-            self.decompose_prompt
-            and self.resolve_prompt
-            and self.specify_prompt
-            and self.shared_rules_prompt is not None
-        ):
+        if self.inventory_prompt and self.step_compose_prompt and self.shared_rules_prompt is not None:
             return
-        self.decompose_prompt = _load_prompt(self.prompts_dir / "opsspec_decompose.md")
-        self.resolve_prompt = _load_prompt(self.prompts_dir / "opsspec_resolve.md")
-        self.specify_prompt = _load_prompt(self.prompts_dir / "opsspec_specify.md")
-        shared_rules_path = self.prompts_dir / "opsspec_shared_rules.md"
-        self.shared_rules_prompt = _load_prompt(shared_rules_path) if shared_rules_path.exists() else ""
+        self.inventory_prompt_path = self.prompts_dir / "opsspec_inventory.md"
+        self.step_compose_prompt_path = self.prompts_dir / "opsspec_step_compose.md"
+        self.shared_rules_prompt_path = self.prompts_dir / "opsspec_shared_rules.md"
+
+        self.inventory_prompt = _load_prompt(self.inventory_prompt_path)
+        self.step_compose_prompt = _load_prompt(self.step_compose_prompt_path)
+        self.shared_rules_prompt = _load_prompt(self.shared_rules_prompt_path) if self.shared_rules_prompt_path.exists() else ""
 
     def generate(
         self,
@@ -375,12 +416,18 @@ class OpsSpecPipeline:
         debug: bool,
     ) -> GenerateOpsSpecResponse:
         self.load()
-        assert self.decompose_prompt is not None
-        assert self.resolve_prompt is not None
-        assert self.specify_prompt is not None
+        assert self.inventory_prompt is not None
+        assert self.step_compose_prompt is not None
         assert self.shared_rules_prompt is not None
+        assert self.inventory_prompt_path is not None
+        assert self.step_compose_prompt_path is not None
+        assert self.shared_rules_prompt_path is not None
 
-        debug_payloads: Dict[str, Dict[str, Any]] = {
+        max_steps = int(os.getenv("RECURSIVE_MAX_STEPS", "25") or "25")
+        max_retries = int(os.getenv("RECURSIVE_MAX_RETRIES", "3") or "3")
+        artifact_preview_n = int(os.getenv("ARTIFACT_PREVIEW_N", "5") or "5")
+
+        debug_payloads: Dict[str, Any] = {
             "request": {
                 "request_id": request_id,
                 "question": question,
@@ -388,6 +435,11 @@ class OpsSpecPipeline:
                 "vega_lite_spec": vega_lite_spec,
                 "data_rows": data_rows,
                 "debug": debug,
+                "env": {
+                    "RECURSIVE_MAX_STEPS": max_steps,
+                    "RECURSIVE_MAX_RETRIES": max_retries,
+                    "ARTIFACT_PREVIEW_N": artifact_preview_n,
+                },
             }
         }
 
@@ -404,31 +456,62 @@ class OpsSpecPipeline:
             chart_context.series_field or "-",
         )
 
-        # ---
-        # Module 1: Explanation Decomposition
-        # ---
-        decompose_payload: Dict[str, Any] = {}
-        decompose_feedback: List[str] = []
-        decompose_retry_notes: List[str] = []
-        max_decompose_attempts = 3
-
+        ops_contract = build_ops_contract_for_prompt()
         roles_summary = {
             "primary_measure": chart_context.primary_measure,
             "primary_dimension": chart_context.primary_dimension,
             "series_field": chart_context.series_field,
         }
-        deterministic_goal_type = infer_goal_type(question)
-        series_domain = []
+        series_domain: List[Any] = []
         if chart_context.series_field:
             series_domain = list(chart_context.categorical_values.get(chart_context.series_field, []))
         measure_fields = list(chart_context.measure_fields)
+        few_shot_budget = tune_few_shot_budget(
+            question=question,
+            explanation=explanation,
+            chart_context=chart_context.model_dump(mode="json"),
+        )
+        inventory_few_shot = build_inventory_few_shot_examples(
+            question=question,
+            explanation=explanation,
+            chart_context=chart_context.model_dump(mode="json"),
+            max_examples=few_shot_budget.inventory_max_examples,
+            max_chars=few_shot_budget.inventory_max_chars,
+        )
+        step_compose_few_shot = build_step_compose_few_shot_examples(
+            question=question,
+            explanation=explanation,
+            chart_context=chart_context.model_dump(mode="json"),
+            max_examples=few_shot_budget.step_max_examples,
+            steps_per_example=few_shot_budget.step_steps_per_example,
+            max_chars=few_shot_budget.step_max_chars,
+        )
 
-        for attempt in range(1, max_decompose_attempts + 1):
+        # ─────────────────────────────────────────────────────────
+        # Module 1: Inventory (LLM + strict retry)
+        # ─────────────────────────────────────────────────────────
+        inventory_feedback: List[str] = []
+        inventory_retry_notes: List[str] = []
+        inventory_payload: Dict[str, Any] = {}
+        tasks_for_trace: List[OpTask] = []
+        steps_debug: List[Dict[str, Any]] = []
+        step_traces: List[RecursiveStepTrace] = []
+
+        def _attach_trace_md() -> None:
+            debug_payloads["trace_md"] = _render_trace_markdown(
+                tasks=tasks_for_trace,
+                steps_debug=steps_debug,
+                step_traces=step_traces,
+            )
+
+        for attempt in range(1, max_retries + 1):
             try:
-                decompose_payload = run_decompose_module(
+                inventory_payload = run_inventory_module(
                     llm=self.llm,
-                    prompt_template=self.decompose_prompt,
+                    prompt_template=self.inventory_prompt,
+                    prompt_path=str(self.inventory_prompt_path),
                     shared_rules=self.shared_rules_prompt,
+                    shared_rules_path=str(self.shared_rules_prompt_path),
                     question=question,
                     explanation=explanation,
                     chart_context=chart_context.model_dump(mode="json"),
@@ -436,361 +519,465 @@ class OpsSpecPipeline:
                     series_domain=series_domain,
                     measure_fields=measure_fields,
                     rows_preview=rows_preview,
-                    validation_feedback=decompose_feedback,
+                    ops_contract=ops_contract,
+                    validation_feedback=inventory_feedback,
+                    few_shot_examples=inventory_few_shot.text,
+                    include_debug_prompts=True,
                 )
-
-                debug_payloads["module1_decompose"] = {
-                    **decompose_payload,
-                    "goal_type": deterministic_goal_type,
-                    "attempt": attempt,
-                    "validation_feedback_in": decompose_feedback,
-                }
-
-                plan_tree = decompose_payload.get("plan_tree")
-                if not isinstance(plan_tree, dict):
-                    raise ValueError("plan_tree must be an object.")
-                plan_tree_model = PlanTree.model_validate(plan_tree)
-                validate_plan_tree(plan_tree_model)
-                validate_plan_against_intent(
-                    plan_tree=plan_tree_model,
-                    question=question,
-                    explanation=explanation,
+                inventory_validated = validate_inventory(
+                    inventory_payload,
+                    ops_contract=ops_contract,
                     chart_context=chart_context,
                 )
+                inventory_payload["_validated"] = inventory_validated.model_dump(mode="json")
+                inventory_payload["_attempt"] = attempt
+                inventory_payload["_validation_feedback_in"] = inventory_feedback
                 break
             except Exception as exc:
-                decompose_feedback = [line for line in str(exc).splitlines() if line.strip()]
-                decompose_retry_notes.append(
-                    f"decompose attempt {attempt}/{max_decompose_attempts} failed with {len(decompose_feedback)} validation errors"
+                inventory_feedback = _build_retry_feedback(attempt, max_retries, exc)
+                inventory_retry_notes.append(
+                    f"inventory attempt {attempt}/{max_retries} failed with {len(inventory_feedback)} feedback lines"
                 )
                 trace_logger.warning(
-                    "[request:%s] decompose_retry | attempt=%d/%d errors=%d",
+                    "[request:%s] inventory_retry | attempt=%d/%d errors=%d",
                     request_id,
                     attempt,
-                    max_decompose_attempts,
-                    len(decompose_feedback),
+                    max_retries,
+                    len(inventory_feedback),
                 )
-                if attempt == max_decompose_attempts:
+                if attempt == max_retries:
                     debug_payloads["error"] = {
-                        "stage": "decompose_retry_exhausted",
-                        "errors": decompose_feedback,
-                        "attempts": max_decompose_attempts,
+                        "stage": "inventory_retry_exhausted",
+                        "errors": inventory_feedback,
+                        "attempts": max_retries,
                     }
+                    debug_payloads["inventory"] = {
+                        **(inventory_payload or {}),
+                        "retry_notes": inventory_retry_notes,
+                        "llm": _llm_debug_config(self.llm),
+                        "ops_contract": ops_contract,
+                    }
+                    _attach_trace_md()
                     session_dir = _persist_debug_bundle(debug_payloads)
                     trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
                     raise RuntimeError(
-                        "decompose_plan failed after strict retries: " + "; ".join(decompose_feedback[:8])
+                        "inventory failed after strict retries: "
+                        + "; ".join(inventory_feedback[:8])
+                        + f" (debug_bundle={session_dir})"
                     ) from exc
 
-        goal_type = deterministic_goal_type
-        trace_logger.info(
-            "[request:%s] decompose_plan | goal_type=%s nodes=%d warnings=%d",
-            request_id,
-            goal_type,
-            len(((decompose_payload.get("plan_tree") or {}).get("nodes") or [])),
-            len(decompose_payload.get("warnings") or []),
+        inventory_validated = validate_inventory(
+            inventory_payload.get("_validated") or inventory_payload,
+            ops_contract=ops_contract,
+            chart_context=chart_context,
         )
 
-        # ---
-        # Module 2: Chart-Grounded Resolution
-        # ---
-        resolve_payload: Dict[str, Any] = {}
-        resolve_feedback: List[str] = []
-        resolve_retry_notes: List[str] = []
-        max_resolve_attempts = 3
-
-        for attempt in range(1, max_resolve_attempts + 1):
-            try:
-                resolve_payload = run_resolve_module(
-                    llm=self.llm,
-                    prompt_template=self.resolve_prompt,
-                    shared_rules=self.shared_rules_prompt,
-                    plan_tree=decompose_payload.get("plan_tree") or {},
-                    chart_context=chart_context,
-                    rows_preview=rows_preview,
-                    validation_feedback=resolve_feedback,
-                )
-
-                debug_steps = resolve_payload.pop("_debug_steps", {})
-                if debug_steps.get("step1_token_resolved"):
-                    debug_payloads["module2_resolve_step1"] = {
-                        "plan_tree": debug_steps["step1_token_resolved"],
-                        "attempt": attempt,
-                    }
-                if debug_steps.get("step2_value_resolved"):
-                    debug_payloads["module2_resolve_step2"] = {
-                        "plan_tree": debug_steps["step2_value_resolved"],
-                        "attempt": attempt,
-                    }
-                if debug_steps.get("step3_llm_called"):
-                    debug_payloads["module2_resolve_step3_llm"] = {
-                        "llm_called": True,
-                        "attempt": attempt,
-                    }
-                debug_payloads["module2_resolve_final"] = {
-                    **resolve_payload,
-                    "attempt": attempt,
-                    "validation_feedback_in": resolve_feedback,
-                }
-                break
-            except Exception as exc:
-                resolve_feedback = [line for line in str(exc).splitlines() if line.strip()]
-                resolve_retry_notes.append(
-                    f"resolve attempt {attempt}/{max_resolve_attempts} failed with {len(resolve_feedback)} errors"
-                )
-                trace_logger.warning(
-                    "[request:%s] resolve_retry | attempt=%d/%d errors=%d",
-                    request_id,
-                    attempt,
-                    max_resolve_attempts,
-                    len(resolve_feedback),
-                )
-                if attempt == max_resolve_attempts:
-                    debug_payloads["error"] = {
-                        "stage": "resolve_retry_exhausted",
-                        "errors": resolve_feedback,
-                        "attempts": max_resolve_attempts,
-                    }
-                    session_dir = _persist_debug_bundle(debug_payloads)
-                    trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
-                    raise RuntimeError(
-                        "resolve_plan failed after strict retries: " + "; ".join(resolve_feedback[:8])
-                    ) from exc
+        # Deterministic ordering for prompting + trace.
+        tasks: List[OpTask] = sorted(list(inventory_validated.tasks or []), key=_task_sort_key)
+        tasks_for_trace = list(tasks)
+        remaining_by_id: Dict[str, OpTask] = {str(t.taskId): t for t in tasks}
+        debug_payloads["inventory"] = {
+            "tasks": [t.model_dump(mode="json") for t in tasks],
+            "warnings": list(inventory_payload.get("warnings") or []),
+            "attempt": int(inventory_payload.get("_attempt") or 1),
+            "validation_feedback_in": list(inventory_payload.get("_validation_feedback_in") or []),
+            "retry_notes": inventory_retry_notes,
+            "llm": _llm_debug_config(self.llm),
+            # LLM raw output (Pydantic 검증 전 원본 JSON string) + latency.
+            "raw_llm_response": inventory_payload.get("_raw_llm_response"),
+            "llm_elapsed_ms": inventory_payload.get("_llm_elapsed_ms"),
+            # 실제 LLM에 전달된 렌더링된 프롬프트 전문 (재현성).
+            "rendered_prompts": inventory_payload.get("_debug"),
+            "prompts": {
+                "inventory": {
+                    "path": str(self.inventory_prompt_path),
+                    "sha256": _sha256_text(self.inventory_prompt),
+                },
+                "step_compose": {
+                    "path": str(self.step_compose_prompt_path),
+                    "sha256": _sha256_text(self.step_compose_prompt),
+                },
+                "shared_rules": {
+                    "path": str(self.shared_rules_prompt_path),
+                    "sha256": _sha256_text(self.shared_rules_prompt),
+                },
+            },
+            "few_shot": {
+                "inventory_example_ids": inventory_few_shot.ids,
+                "step_compose_example_ids": step_compose_few_shot.ids,
+                "budget": {
+                    "inventory_max_examples": few_shot_budget.inventory_max_examples,
+                    "inventory_max_chars": few_shot_budget.inventory_max_chars,
+                    "step_max_examples": few_shot_budget.step_max_examples,
+                    "step_max_chars": few_shot_budget.step_max_chars,
+                    "step_steps_per_example": few_shot_budget.step_steps_per_example,
+                },
+            },
+        }
 
         trace_logger.info(
-            "[request:%s] resolve_plan | llm_called=%s nodes=%d warnings=%d",
+            "[request:%s] inventory_done | tasks=%d warnings=%d llm_elapsed_ms=%s",
             request_id,
-            resolve_payload.get("llm_called", False),
-            len(((resolve_payload.get("grounded_plan_tree") or {}).get("nodes") or [])),
-            len(resolve_payload.get("warnings") or []),
+            len(tasks),
+            len(inventory_payload.get("warnings") or []),
+            inventory_payload.get("_llm_elapsed_ms", "?"),
         )
 
         # ─────────────────────────────────────────────────────────
-        # Module 3: Grammar Specification (with retry + cross-module feedback)
+        # Recursive synthesis loop
         # ─────────────────────────────────────────────────────────
-        ops_contract = build_ops_contract_for_prompt()
-        specify_payload: Dict[str, Any] = {}
-        validation_warnings: List[str] = []
-        specify_retry_notes: List[str] = []
-        parsed_groups: Dict[str, List[OperationSpec]] = {}
+        executor = OpsSpecExecutor(chart_context)
+        executed_node_ids: List[str] = []
+        ops_spec_groups: Dict[str, List[OperationSpec]] = {}
+        available_nodes_prompt: List[Dict[str, Any]] = []
+        step_retry_notes: List[str] = []
 
-        feedback_errors: List[str] = []
-        max_specify_attempts = 3
-        grounded_plan_tree_dict = resolve_payload.get("grounded_plan_tree") or {}
-        # cross-module 재시도 플래그: Module 3 실패가 그라운딩 문제이면 Module 2를 1회 재실행
-        _cross_module_retry_used = False
+        def _remaining_tasks_prompt() -> List[Dict[str, Any]]:
+            # Small, stable shape for prompting.
+            remaining = sorted(list(remaining_by_id.values()), key=_task_sort_key)
+            out: List[Dict[str, Any]] = []
+            for t in remaining:
+                out.append(
+                    {
+                        "taskId": str(t.taskId),
+                        "op": t.op,
+                        "sentenceIndex": int(t.sentenceIndex),
+                        "mention": t.mention,
+                        "paramsHint": t.paramsHint,
+                    }
+                )
+            return out
 
-        for attempt in range(1, max_specify_attempts + 1):
-            specify_payload = run_specify_module(
-                llm=self.llm,
-                prompt_template=self.specify_prompt,
-                shared_rules=self.shared_rules_prompt,
-                grounded_plan_tree=grounded_plan_tree_dict,
-                chart_context=chart_context.model_dump(mode="json"),
-                ops_contract=ops_contract,
-                validation_feedback=feedback_errors,
-            )
-            debug_payloads["module3_specify"] = {
-                **specify_payload,
-                "attempt": attempt,
-                "validation_feedback_in": feedback_errors,
-            }
-            try:
-                raw_groups = specify_payload.get("ops_spec") or {}
-                parsed_groups, validation_warnings = _parse_and_validate_groups(
-                    raw_groups=raw_groups,
-                    chart_context=chart_context,
-                )
-                grounded_plan_tree_model = GroundedPlanTree.model_validate(grounded_plan_tree_dict)
-                _validate_compiled_groups_match_plan(
-                    plan_tree=grounded_plan_tree_model,
-                    compiled_groups=parsed_groups,
-                )
+        for step_idx in range(1, max_steps + 1):
+            if not remaining_by_id:
                 break
-            except ValueError as exc:
-                feedback_errors = [line for line in str(exc).splitlines() if line.strip()]
-                specify_retry_notes.append(
-                    f"specify attempt {attempt}/{max_specify_attempts} failed with {len(feedback_errors)} validation errors"
-                )
-                trace_logger.warning(
-                    "[request:%s] specify_retry | attempt=%d/%d errors=%d",
-                    request_id,
-                    attempt,
-                    max_specify_attempts,
-                    len(feedback_errors),
-                )
 
-                # Cross-module 피드백: 그라운딩 문제이면 Module 2를 1회 재실행
-                if (
-                    not _cross_module_retry_used
-                    and attempt == max_specify_attempts
-                    and _is_grounding_error(feedback_errors)
-                ):
-                    _cross_module_retry_used = True
-                    trace_logger.info(
-                        "[request:%s] cross_module_retry | grounding error → re-running resolve",
-                        request_id,
-                    )
-                    try:
-                        resolve_payload = run_resolve_module(
-                            llm=self.llm,
-                            prompt_template=self.resolve_prompt,
-                            shared_rules=self.shared_rules_prompt,
-                            plan_tree=decompose_payload.get("plan_tree") or {},  # type: ignore[arg-type]
-                            chart_context=chart_context,
-                            rows_preview=rows_preview,
-                            validation_feedback=feedback_errors,
-                        )
-                        resolve_payload.pop("_debug_steps", None)
-                        grounded_plan_tree_dict = resolve_payload.get("grounded_plan_tree") or {}
-                        debug_payloads["module2_resolve_final"] = {
-                            **resolve_payload,
-                            "cross_module_retry": True,
-                        }
-                    except Exception as resolve_exc:
-                        trace_logger.warning(
-                            "[request:%s] cross_module_retry failed: %s", request_id, str(resolve_exc)
-                        )
-                    # Specify를 1회 더 시도
-                    specify_payload = run_specify_module(
+            step_feedback: List[str] = []
+            compose_payload: Dict[str, Any] = {}
+            picked_task: Optional[OpTask] = None
+            grounded_op_spec: Dict[str, Any] = {}
+            built_op: Optional[OperationSpec] = None
+            scalar_deps: Set[str] = set()
+            group_name: str = "ops"
+            node_id: str = f"n{len(executed_node_ids) + 1}"
+            step_warnings: List[str] = []
+            remaining_before = _remaining_tasks_prompt()
+
+            for attempt in range(1, max_retries + 1):
+                try:
+                    compose_payload = run_step_compose_module(
                         llm=self.llm,
-                        prompt_template=self.specify_prompt,
+                        prompt_template=self.step_compose_prompt,
+                        prompt_path=str(self.step_compose_prompt_path),
                         shared_rules=self.shared_rules_prompt,
-                        grounded_plan_tree=grounded_plan_tree_dict,
+                        shared_rules_path=str(self.shared_rules_prompt_path),
+                        question=question,
+                        explanation=explanation,
+                        remaining_tasks=_remaining_tasks_prompt(),
+                        available_nodes=sorted(
+                            list(available_nodes_prompt),
+                            key=lambda item: str(item.get("nodeId") or ""),
+                        ),
                         chart_context=chart_context.model_dump(mode="json"),
+                        rows_preview=rows_preview,
                         ops_contract=ops_contract,
-                        validation_feedback=feedback_errors,
+                        validation_feedback=step_feedback,
+                        few_shot_examples=step_compose_few_shot.text,
+                        include_debug_prompts=True,
                     )
-                    debug_payloads["module3_specify"] = {
-                        **specify_payload,
-                        "attempt": "cross_module_retry",
-                        "validation_feedback_in": feedback_errors,
-                    }
-                    try:
-                        raw_groups = specify_payload.get("ops_spec") or {}
-                        parsed_groups, validation_warnings = _parse_and_validate_groups(
-                            raw_groups=raw_groups,
-                            chart_context=chart_context,
-                        )
-                        grounded_plan_tree_model = GroundedPlanTree.model_validate(grounded_plan_tree_dict)
-                        _validate_compiled_groups_match_plan(
-                            plan_tree=grounded_plan_tree_model,
-                            compiled_groups=parsed_groups,
-                        )
-                        break
-                    except ValueError:
-                        pass  # 아래 exhausted 처리로 fall-through
 
-                if attempt == max_specify_attempts:
-                    debug_payloads["error"] = {
-                        "stage": "specify_retry_exhausted",
-                        "errors": feedback_errors,
-                        "attempts": max_specify_attempts,
-                        "cross_module_retry_used": _cross_module_retry_used,
-                    }
-                    session_dir = _persist_debug_bundle(debug_payloads)
-                    trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
-                    raise RuntimeError(
-                        "specify_opsspec failed after strict retries: "
-                        + "; ".join(feedback_errors[:8])
-                    ) from exc
+                    parsed = validate_step_compose_output(
+                        compose_payload,
+                        remaining_tasks_by_id=remaining_by_id,
+                        executed_node_ids=set(executed_node_ids),
+                        ops_contract=ops_contract,
+                    )
+                    picked_task = remaining_by_id.get(str(parsed.pickTaskId))
+                    assert picked_task is not None
 
-        trace_logger.info(
-            "[request:%s] specify_opsspec | groups=%d warnings=%d",
-            request_id,
-            len(specify_payload.get("ops_spec") or {}),
-            len(specify_payload.get("warnings") or []),
-        )
+                    scalar_deps = set(extract_scalar_ref_deps(parsed.op_spec))
+                    grounded_op_spec, grounding_warnings = ground_op_spec(
+                        parsed.op_spec, chart_context=chart_context
+                    )
+                    step_warnings.extend(grounding_warnings)
+
+                    group_name = _group_name(picked_task.sentenceIndex)
+                    meta_inputs = sorted({*list(parsed.inputs or []), *list(scalar_deps)})
+                    if node_id in meta_inputs:
+                        meta_inputs = [x for x in meta_inputs if x != node_id]
+
+                    op_dict = dict(grounded_op_spec)
+                    op_dict["id"] = node_id
+                    op_dict["meta"] = {
+                        "nodeId": node_id,
+                        "inputs": meta_inputs,
+                        "sentenceIndex": int(picked_task.sentenceIndex),
+                        "source": f"recursive_step={step_idx};taskId={picked_task.taskId}",
+                    }
+
+                    built = parse_operation_spec(op_dict)
+                    normalized, op_warnings = validate_operation(built, chart_context=chart_context)
+                    step_warnings.extend(op_warnings)
+                    built_op = normalized
+                    break
+                except Exception as exc:
+                    step_feedback = _build_retry_feedback(attempt, max_retries, exc)
+                    step_retry_notes.append(
+                        f"step {step_idx} attempt {attempt}/{max_retries} failed with {len(step_feedback)} feedback lines"
+                    )
+                    trace_logger.warning(
+                        "[request:%s] step_retry | step=%d attempt=%d/%d errors=%d",
+                        request_id,
+                        step_idx,
+                        attempt,
+                        max_retries,
+                        len(step_feedback),
+                    )
+                    if attempt == max_retries:
+                        steps_debug.append(
+                            {
+                                "compose": {
+                                    # Step-Compose LLM 출력 (명시적 추출 — failed path)
+                                    "pickTaskId": (compose_payload or {}).get("pickTaskId"),
+                                    "op_spec": (compose_payload or {}).get("op_spec"),
+                                    "inputs": (compose_payload or {}).get("inputs"),
+                                    "warnings": (compose_payload or {}).get("warnings"),
+                                    "raw_llm_response": (compose_payload or {}).get("_raw_llm_response"),
+                                    "llm_elapsed_ms": (compose_payload or {}).get("_llm_elapsed_ms"),
+                                    "rendered_prompts": (compose_payload or {}).get("_debug"),
+                                    # 파이프라인 메타
+                                    "step": step_idx,
+                                    "attempt": attempt,
+                                    "validation_feedback_in": step_feedback,
+                                    "status": "failed",
+                                }
+                            }
+                        )
+                        debug_payloads["error"] = {
+                            "stage": "step_retry_exhausted",
+                            "step": step_idx,
+                            "errors": step_feedback,
+                            "attempts": max_retries,
+                            "remaining_tasks": _remaining_tasks_prompt(),
+                            "executed_nodes": available_nodes_prompt,
+                        }
+                        debug_payloads["steps"] = steps_debug
+                        _attach_trace_md()
+                        session_dir = _persist_debug_bundle(debug_payloads)
+                        trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
+                        raise RuntimeError(
+                            f"step-compose failed after strict retries (step={step_idx}): "
+                            + "; ".join(step_feedback[:8])
+                            + f" (debug_bundle={session_dir})"
+                        ) from exc
+
+            assert picked_task is not None
+            assert built_op is not None
+
+            # Execute one op to grow artifacts (C).
+            exec_warnings: List[str] = []
+            try:
+                _ = executor.execute(rows=data_rows, ops_spec={group_name: [built_op]})
+            except Exception as exc:
+                exec_warnings.append(f"executor failed: {exc}")
+                debug_payloads["error"] = {
+                    "stage": "executor_failed",
+                    "step": step_idx,
+                    "nodeId": node_id,
+                    "error": str(exc),
+                }
+                debug_payloads["steps"] = steps_debug
+                _attach_trace_md()
+                session_dir = _persist_debug_bundle(debug_payloads)
+                trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
+                raise
+
+            runtime_values = executor.runtime.get(node_id, [])
+            artifact = summarize_runtime_values(
+                list(runtime_values),
+                chart_context=chart_context,
+                max_items=max(1, artifact_preview_n),
+            )
+
+            # Update graph + state
+            ops_spec_groups.setdefault(group_name, []).append(built_op)
+            executed_node_ids.append(node_id)
+            remaining_by_id.pop(str(picked_task.taskId), None)
+            remaining_after = _remaining_tasks_prompt()
+
+            available_nodes_prompt.append(
+                {
+                    "nodeId": node_id,
+                    "op": built_op.op,
+                    "sentenceIndex": int(picked_task.sentenceIndex),
+                    "groupName": group_name,
+                    "artifact": artifact,
+                }
+            )
+
+            step_debug_entry = {
+                "compose": {
+                    # Step-Compose LLM 출력 (명시적 추출 — success path)
+                    "pickTaskId": compose_payload.get("pickTaskId"),
+                    "op_spec": compose_payload.get("op_spec"),
+                    "inputs": compose_payload.get("inputs"),
+                    "warnings": compose_payload.get("warnings"),
+                    "raw_llm_response": compose_payload.get("_raw_llm_response"),
+                    "llm_elapsed_ms": compose_payload.get("_llm_elapsed_ms"),
+                    "rendered_prompts": compose_payload.get("_debug"),
+                    # 파이프라인이 결정론적으로 부여하는 메타
+                    "step": step_idx,
+                    "attempt": attempt,
+                    "nodeId": node_id,
+                    "groupName": group_name,
+                    "grounding_warnings": step_warnings,
+                    "status": "ok",
+                },
+                "grounded": {
+                    "task": picked_task.model_dump(mode="json"),
+                    "grounded_op_spec": grounded_op_spec,
+                    "scalar_ref_deps": sorted(list(scalar_deps)),
+                },
+                "op": built_op.model_dump(by_alias=True, exclude_none=True),
+                "exec": {
+                    "artifact": artifact,
+                    "warnings": exec_warnings,
+                },
+                "remaining_before": remaining_before,
+                "remaining_after": remaining_after,
+            }
+            steps_debug.append(step_debug_entry)
+
+            step_traces.append(
+                RecursiveStepTrace(
+                    step=step_idx,
+                    taskId=str(picked_task.taskId),
+                    nodeId=node_id,
+                    groupName=group_name,
+                    op=built_op.op,
+                    inputs=[str(x) for x in (built_op.meta.inputs or [])],
+                    scalarRefs=sorted(list(scalar_deps)),
+                    grounded_op_spec=grounded_op_spec,
+                    artifact=artifact,
+                    warnings=list(step_warnings) + exec_warnings,
+                )
+            )
+
+            trace_logger.info(
+                "[request:%s] step_done | step=%d node=%s op=%s group=%s remaining=%d llm_elapsed_ms=%s",
+                request_id,
+                step_idx,
+                node_id,
+                built_op.op,
+                group_name,
+                len(remaining_by_id),
+                compose_payload.get("_llm_elapsed_ms", "?"),
+            )
+
+        if remaining_by_id:
+            debug_payloads["error"] = {
+                "stage": "max_steps_exhausted",
+                "executed_steps": len(executed_node_ids),
+                "max_steps": max_steps,
+                "remaining_tasks": _remaining_tasks_prompt(),
+            }
+            debug_payloads["steps"] = steps_debug
+            _attach_trace_md()
+            session_dir = _persist_debug_bundle(debug_payloads)
+            trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
+            raise RuntimeError(
+                f"recursive synthesis exhausted max steps ({max_steps}) with {len(remaining_by_id)} tasks remaining."
+            )
 
         # ─────────────────────────────────────────────────────────
-        # Canonicalization
+        # Normalize meta.inputs (no nodeId rewriting)
         # ─────────────────────────────────────────────────────────
-        canonical_groups, canonical_warnings = canonicalize_ops_spec_groups(parsed_groups, chart_context=chart_context)
-        trace_logger.info(
-            "[request:%s] canonicalized | groups=%d warnings=%d",
-            request_id,
-            len(canonical_groups),
-            len(canonical_warnings),
-        )
+        normalized_groups, normalize_warnings = normalize_meta_inputs(ops_spec_groups)
+
+        # Preserve pre-schedule grammar for logging/debug
+        pre_schedule_groups = {k: [op.model_copy() for op in v] for k, v in normalized_groups.items()}
+
+        # ─────────────────────────────────────────────────────────
+        # Schedule grammar (phase/parallel hints injected into meta.view)
+        # ─────────────────────────────────────────────────────────
+        scheduled_groups = schedule_ops_spec(normalized_groups)
 
         # ─────────────────────────────────────────────────────────
         # Draw Plan
         # ─────────────────────────────────────────────────────────
         draw_plan_warnings: List[str] = []
-        try:
-            draw_ops_spec = build_draw_ops_spec(
-                ops_spec=canonical_groups,
-                chart_context=chart_context,
-                data_rows=data_rows,
-                vega_lite_spec=vega_lite_spec,
-            )
-            draw_plan_path = export_draw_plan_to_public(draw_ops_spec, request_id=request_id)
-            debug_payloads["draw_plan"] = {
-                "draw_ops_spec": draw_ops_spec,
-                "path": str(draw_plan_path),
-            }
-            trace_logger.info(
-                "[request:%s] draw_plan_exported | groups=%d path=%s",
-                request_id,
-                len(draw_ops_spec),
-                str(draw_plan_path),
-            )
-        except Exception as exc:
-            draw_plan_warnings.append(f"draw plan generation failed: {exc}")
-            debug_payloads["draw_plan"] = {"error": str(exc)}
-            trace_logger.warning("[request:%s] draw_plan_failed | error=%s", request_id, str(exc))
+        if debug:
+            try:
+                draw_ops_spec = build_draw_ops_spec(
+                    ops_spec=scheduled_groups,
+                    chart_context=chart_context,
+                    data_rows=data_rows,
+                    vega_lite_spec=vega_lite_spec,
+                )
+                draw_plan_path = export_draw_plan_to_public(draw_ops_spec, request_id=request_id)
+                debug_payloads["draw_plan"] = {
+                    "draw_ops_spec": draw_ops_spec,
+                    "path": str(draw_plan_path),
+                }
+                trace_logger.info(
+                    "[request:%s] draw_plan_exported | groups=%d path=%s",
+                    request_id,
+                    len(draw_ops_spec),
+                    str(draw_plan_path),
+                )
+            except Exception as exc:
+                draw_plan_warnings.append(f"draw plan generation failed: {exc}")
+                debug_payloads["draw_plan"] = {"error": str(exc)}
+                trace_logger.warning("[request:%s] draw_plan_failed | error=%s", request_id, str(exc))
 
         # ─────────────────────────────────────────────────────────
-        # Collect all warnings
+        # Collect warnings + trace
         # ─────────────────────────────────────────────────────────
         all_warnings: List[str] = []
         all_warnings.extend(context_warnings)
-        all_warnings.extend(decompose_payload.get("warnings") or [])
-        all_warnings.extend(decompose_retry_notes)
-        all_warnings.extend(resolve_payload.get("warnings") or [])
-        all_warnings.extend(resolve_retry_notes)
-        all_warnings.extend(specify_payload.get("warnings") or [])
-        all_warnings.extend(specify_retry_notes)
-        all_warnings.extend(validation_warnings)
-        all_warnings.extend(canonical_warnings)
+        all_warnings.extend(list(inventory_payload.get("warnings") or []))
+        all_warnings.extend(inventory_retry_notes)
+        all_warnings.extend(step_retry_notes)
+        all_warnings.extend(normalize_warnings)
         all_warnings.extend(draw_plan_warnings)
 
-        trace: PipelineTrace | None = None
+        trace: RecursivePipelineTrace | None = None
         if debug:
-            trace = PipelineTrace(
+            trace = RecursivePipelineTrace(
                 context_built={
                     "chart_context": chart_context.model_dump(mode="json"),
                     "context_warnings": context_warnings,
                     "rows_preview_count": len(rows_preview),
                 },
-                decompose_plan={
-                    **decompose_payload,
-                    "goal_type": goal_type,
-                    "retry_notes": decompose_retry_notes,
+                inventory={
+                    "tasks_count": len(tasks),
+                    "tasks": [t.model_dump(mode="json") for t in tasks],
+                    "warnings": list(inventory_payload.get("warnings") or []),
+                    "retry_notes": inventory_retry_notes,
                 },
-                resolve_plan={
-                    **resolve_payload,
-                    "retry_notes": resolve_retry_notes,
-                },
-                specify_opsspec={
-                    **specify_payload,
-                    "retry_errors": feedback_errors,
-                    "retry_notes": specify_retry_notes,
-                    "cross_module_retry_used": _cross_module_retry_used,
-                },
-                canonicalized={
-                    "groups": {key: len(value) for key, value in canonical_groups.items()},
-                    "warnings": canonical_warnings,
+                steps=step_traces,
+                finalized={
+                    "groups": {key: len(value) for key, value in scheduled_groups.items()},
+                    "warnings": normalize_warnings,
                 },
             )
 
         result = GenerateOpsSpecResponse(
-            ops_spec=canonical_groups,
+            ops_spec=scheduled_groups,
             chart_context=chart_context,
             warnings=all_warnings,
             trace=trace,
         )
+
+        # 성공 시에도 항상 debug 번들 저장 (debug=True/False 무관).
+        # debug=True 인 경우에만 draw_plan/trace 객체가 API 응답에 포함됨.
+        debug_payloads["steps"] = steps_debug
         debug_payloads["final_grammar"] = result.model_dump(mode="json", by_alias=True)
+        debug_payloads["pre_schedule_grammar"] = {
+            group: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
+            for group, ops in pre_schedule_groups.items()
+        }
+        _attach_trace_md()
         session_dir = _persist_debug_bundle(debug_payloads)
         trace_logger.info("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
         return result

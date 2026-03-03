@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Type
@@ -122,6 +123,7 @@ class StructuredLLMClient:
         user_prompt: str,
         task_name: str,
     ) -> Dict[str, Any]:
+        started = time.perf_counter()
         try:
             parsed = self.client.chat.completions.create(
                 model=self.ollama_model,
@@ -143,7 +145,11 @@ class StructuredLLMClient:
         try:
             payload = parsed if isinstance(parsed, dict) else parsed.model_dump()
             validated = response_model.model_validate(payload)
-            return validated.model_dump(by_alias=True)
+            result = validated.model_dump(by_alias=True)
+            # instructor는 raw string을 직접 노출하지 않으므로 validated dump를 best-effort로 저장.
+            result["_raw_llm_response"] = json.dumps(payload, ensure_ascii=False)
+            result["_llm_elapsed_ms"] = round((time.perf_counter() - started) * 1000, 1)
+            return result
         except Exception as exc:
             raise RuntimeError(f"{task_name} response validation failed: {exc}") from exc
 
@@ -174,6 +180,7 @@ class StructuredLLMClient:
             method="POST",
             headers={"Content-Type": "application/json"},
         )
+        started = time.perf_counter()
         try:
             with urllib.request.urlopen(request, timeout=120) as resp:
                 raw = resp.read().decode("utf-8")
@@ -185,9 +192,13 @@ class StructuredLLMClient:
 
         try:
             outer = json.loads(raw)
-            inner = json.loads(outer["message"]["content"])
+            raw_content: str = outer["message"]["content"]
+            inner = json.loads(raw_content)
             validated = response_model.model_validate(inner)
-            return validated.model_dump(by_alias=True)
+            result = validated.model_dump(by_alias=True)
+            result["_raw_llm_response"] = raw_content
+            result["_llm_elapsed_ms"] = round((time.perf_counter() - started) * 1000, 1)
+            return result
         except Exception as exc:
             raise RuntimeError(f"Failed to parse native structured output: {exc}") from exc
 
@@ -224,6 +235,7 @@ class StructuredLLMClient:
                 "Authorization": f"Bearer {api_key}",
             },
         )
+        started = time.perf_counter()
         try:
             with urllib.request.urlopen(request, timeout=120) as resp:
                 raw = resp.read().decode("utf-8")
@@ -238,6 +250,10 @@ class StructuredLLMClient:
             content = outer["choices"][0]["message"]["content"]
             inner = json.loads(content) if isinstance(content, str) else content
             validated = response_model.model_validate(inner)
-            return validated.model_dump(by_alias=True)
+            result = validated.model_dump(by_alias=True)
+            # LLM이 실제로 반환한 raw JSON string(Pydantic 검증 전)을 저장.
+            result["_raw_llm_response"] = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+            result["_llm_elapsed_ms"] = round((time.perf_counter() - started) * 1000, 1)
+            return result
         except Exception as exc:
             raise RuntimeError(f"{task_name} response parsing/validation failed: {exc}") from exc

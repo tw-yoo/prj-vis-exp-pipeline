@@ -66,6 +66,10 @@ public/generated/
 .claude/
 
 test.py
-test.csv
+temp.csv
 test.csv
 *.ipynb
+
+expert_drawing_util.py
+validation.py
+example.csv

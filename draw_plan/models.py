@@ -38,18 +38,65 @@ class DrawLineStyle(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DrawBandStyle(BaseModel):
+    fill: str | None = None
+    opacity: float | None = None
+    stroke: str | None = None
+    strokeWidth: float | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DrawLineHorizontalSpec(BaseModel):
     y: float
 
     model_config = ConfigDict(extra="forbid")
 
 
-class DrawLineSpec(BaseModel):
-    mode: Literal["horizontal-from-y"]
+class DrawLinePairSpec(BaseModel):
+    x: List[PrimitiveValue] = Field(min_length=2, max_length=2)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawLineConnectEndpoint(BaseModel):
+    target: PrimitiveValue
+    series: PrimitiveValue | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawLineConnectBySpec(BaseModel):
+    start: DrawLineConnectEndpoint
+    end: DrawLineConnectEndpoint
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawLineHorizontalFromYSpec(BaseModel):
+    mode: Literal["horizontal-from-y"] = "horizontal-from-y"
     hline: DrawLineHorizontalSpec
     style: DrawLineStyle | None = None
 
     model_config = ConfigDict(extra="forbid")
+
+
+class DrawLineConnectSpec(BaseModel):
+    mode: Literal["connect"] = "connect"
+    pair: DrawLinePairSpec | None = None
+    connectBy: DrawLineConnectBySpec | None = None
+    style: DrawLineStyle | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+DrawLineSpec: TypeAlias = Annotated[
+    Union[
+        DrawLineHorizontalFromYSpec,
+        DrawLineConnectSpec,
+    ],
+    Field(discriminator="mode"),
+]
 
 
 class DrawGroupFilterSpec(BaseModel):
@@ -58,6 +105,22 @@ class DrawGroupFilterSpec(BaseModel):
     keep: List[PrimitiveValue] | None = None
     exclude: List[PrimitiveValue] | None = None
     reset: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawBandSpec(BaseModel):
+    axis: Literal["x", "y"]
+    range: List[PrimitiveValue] = Field(min_length=2, max_length=2)
+    label: str | None = None
+    style: DrawBandStyle | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawSumSpec(BaseModel):
+    value: float
+    label: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -86,6 +149,36 @@ class DrawLineOp(DrawOpBase):
     line: DrawLineSpec
 
 
+class DrawTextStyle(BaseModel):
+    color: str | None = None
+    fontSize: float | None = None
+    fontWeight: str | int | None = None
+    opacity: float | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawTextNormalizedPosition(BaseModel):
+    x: float
+    y: float
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawTextSpec(BaseModel):
+    value: str
+    mode: Literal["normalized"] = "normalized"
+    position: DrawTextNormalizedPosition = Field(default_factory=lambda: DrawTextNormalizedPosition(x=0.92, y=0.08))
+    style: DrawTextStyle | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawTextOp(DrawOpBase):
+    action: Literal["text"] = "text"
+    text: DrawTextSpec
+
+
 class DrawStackedFilterGroupsOp(DrawOpBase):
     action: Literal["stacked-filter-groups"] = "stacked-filter-groups"
     groupFilter: DrawGroupFilterSpec
@@ -96,13 +189,26 @@ class DrawGroupedFilterGroupsOp(DrawOpBase):
     groupFilter: DrawGroupFilterSpec
 
 
+class DrawBandOp(DrawOpBase):
+    action: Literal["band"] = "band"
+    band: DrawBandSpec
+
+
+class DrawSumOp(DrawOpBase):
+    action: Literal["sum"] = "sum"
+    sum: DrawSumSpec
+
+
 DrawOperation: TypeAlias = Annotated[
     Union[
         DrawClearOp,
         DrawHighlightOp,
         DrawLineOp,
+        DrawTextOp,
         DrawStackedFilterGroupsOp,
         DrawGroupedFilterGroupsOp,
+        DrawBandOp,
+        DrawSumOp,
     ],
     Field(discriminator="action"),
 ]
@@ -116,4 +222,3 @@ def dump_draw_groups(groups: DrawOpsGroupMap) -> Dict[str, List[Dict[str, object
         group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
         for group_name, ops in groups.items()
     }
-
