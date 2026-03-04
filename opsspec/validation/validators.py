@@ -261,6 +261,33 @@ def _validate_numeric_aggregate_field(
     return op, warnings
 
 
+def _pairdiff_candidate_series_fields(op: PairDiffOp, chart_context: ChartContext) -> List[str]:
+    candidates: List[str] = []
+    for field, domain in chart_context.categorical_values.items():
+        domain_set = {str(v) for v in domain}
+        if op.groupA in domain_set and op.groupB in domain_set:
+            candidates.append(field)
+
+    preferred = op.seriesField or chart_context.series_field
+    if preferred and preferred in candidates:
+        ordered = [preferred] + [x for x in candidates if x != preferred]
+        return ordered
+    return candidates
+
+
+def _pick_pairdiff_by_field(chart_context: ChartContext, *, series_field: str) -> Optional[str]:
+    dims = list(chart_context.dimension_fields or [])
+    if not dims:
+        return None
+
+    if chart_context.primary_dimension in dims and chart_context.primary_dimension != series_field:
+        return chart_context.primary_dimension
+    for field in dims:
+        if field != series_field:
+            return field
+    return None
+
+
 def validate_operation(
     op: OperationSpec,
     *,
@@ -316,28 +343,56 @@ def validate_operation(
         return op, warnings
 
     if isinstance(op, PairDiffOp):
-        if op.by not in chart_context.fields:
-            raise ValueError(f'pairDiff by field "{op.by}" must be one of chart_context.fields')
-        if chart_context.dimension_fields and op.by not in chart_context.dimension_fields:
-            raise ValueError(f'pairDiff by field "{op.by}" must be a dimension field')
-
-        series_field = op.seriesField or chart_context.series_field
+        updated = op
+        series_field = updated.seriesField or chart_context.series_field
         if not series_field:
-            raise ValueError("pairDiff requires seriesField or chart_context.series_field")
+            inferred = _pairdiff_candidate_series_fields(updated, chart_context)
+            if inferred:
+                series_field = inferred[0]
+                updated = updated.model_copy(update={"seriesField": series_field})
+                warnings.append(f'pairDiff seriesField inferred as "{series_field}" from groupA/groupB domain')
+            else:
+                raise ValueError("pairDiff requires seriesField or chart_context.series_field")
+
         if series_field not in chart_context.fields:
             raise ValueError(f'pairDiff seriesField "{series_field}" must be one of chart_context.fields')
 
         series_domain = chart_context.categorical_values.get(series_field, [])
         domain_set = {str(v) for v in series_domain}
-        if op.groupA not in domain_set:
-            raise ValueError(f'pairDiff groupA "{op.groupA}" is outside domain of seriesField "{series_field}"')
-        if op.groupB not in domain_set:
-            raise ValueError(f'pairDiff groupB "{op.groupB}" is outside domain of seriesField "{series_field}"')
-        if op.groupA == op.groupB:
+        if updated.groupA not in domain_set or updated.groupB not in domain_set:
+            inferred = _pairdiff_candidate_series_fields(updated, chart_context)
+            if inferred and inferred[0] != series_field:
+                series_field = inferred[0]
+                updated = updated.model_copy(update={"seriesField": series_field})
+                warnings.append(f'pairDiff seriesField corrected to "{series_field}" from groupA/groupB domain')
+                series_domain = chart_context.categorical_values.get(series_field, [])
+                domain_set = {str(v) for v in series_domain}
+
+        if updated.by == series_field:
+            alt_by = _pick_pairdiff_by_field(chart_context, series_field=series_field)
+            if alt_by:
+                updated = updated.model_copy(update={"by": alt_by})
+                warnings.append(f'pairDiff by field changed to "{alt_by}" to avoid by==seriesField "{series_field}"')
+
+        if updated.by not in chart_context.fields:
+            raise ValueError(f'pairDiff by field "{updated.by}" must be one of chart_context.fields')
+        if chart_context.dimension_fields and updated.by not in chart_context.dimension_fields:
+            alt_by = _pick_pairdiff_by_field(chart_context, series_field=series_field)
+            if alt_by and alt_by in chart_context.dimension_fields:
+                updated = updated.model_copy(update={"by": alt_by})
+                warnings.append(f'pairDiff by field corrected to dimension field "{alt_by}"')
+            else:
+                raise ValueError(f'pairDiff by field "{updated.by}" must be a dimension field')
+
+        if updated.groupA not in domain_set:
+            raise ValueError(f'pairDiff groupA "{updated.groupA}" is outside domain of seriesField "{series_field}"')
+        if updated.groupB not in domain_set:
+            raise ValueError(f'pairDiff groupB "{updated.groupB}" is outside domain of seriesField "{series_field}"')
+        if updated.groupA == updated.groupB:
             raise ValueError("pairDiff requires groupA and groupB to be different")
-        if op.precision is not None and op.precision < 0:
+        if updated.precision is not None and updated.precision < 0:
             raise ValueError("pairDiff precision must be >= 0")
-        updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
+        updated, op_warnings = _validate_numeric_aggregate_field(updated, chart_context=chart_context)
         warnings.extend(op_warnings)
         return updated, warnings
 

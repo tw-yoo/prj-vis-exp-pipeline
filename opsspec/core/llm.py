@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -19,6 +20,11 @@ try:
     from openai import OpenAI
 except ImportError:  # pragma: no cover
     OpenAI = None
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover
+    certifi = None
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,29 @@ class StructuredLLMClient:
         self.instructor_mode = instructor_mode
         self.backend: Optional[str] = None
         self.client: Any = None
+
+    def _ssl_context(self) -> ssl.SSLContext:
+        """
+        Build an SSL context for HTTPS requests.
+
+        Priority:
+        1) SSL_CERT_FILE env var (explicit override)
+        2) certifi CA bundle (if installed)
+        3) Python default trust store
+        """
+        explicit = os.getenv("SSL_CERT_FILE", "").strip()
+        if explicit:
+            return ssl.create_default_context(cafile=explicit)
+        if certifi is not None:
+            return ssl.create_default_context(cafile=certifi.where())
+        return ssl.create_default_context()
+
+    def _urlopen(self, request: urllib.request.Request, *, endpoint: str, timeout: int) -> bytes:
+        kwargs: Dict[str, Any] = {"timeout": timeout}
+        if endpoint.lower().startswith("https://"):
+            kwargs["context"] = self._ssl_context()
+        with urllib.request.urlopen(request, **kwargs) as resp:
+            return resp.read()
 
     def load(self) -> None:
         if self.backend is not None:
@@ -182,8 +211,7 @@ class StructuredLLMClient:
         )
         started = time.perf_counter()
         try:
-            with urllib.request.urlopen(request, timeout=120) as resp:
-                raw = resp.read().decode("utf-8")
+            raw = self._urlopen(request, endpoint=endpoint, timeout=120).decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")
             raise RuntimeError(f"Ollama HTTP error ({exc.code}): {detail}") from exc
@@ -237,8 +265,7 @@ class StructuredLLMClient:
         )
         started = time.perf_counter()
         try:
-            with urllib.request.urlopen(request, timeout=120) as resp:
-                raw = resp.read().decode("utf-8")
+            raw = self._urlopen(request, endpoint=endpoint, timeout=120).decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="ignore")
             raise RuntimeError(f"OpenAI HTTP error ({exc.code}): {detail}") from exc

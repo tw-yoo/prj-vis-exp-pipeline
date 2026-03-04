@@ -26,6 +26,11 @@ from .models import (
     DrawLineStyle,
     DrawMeta,
     DrawOpsGroupMap,
+    DrawScalarPanelDelta,
+    DrawScalarPanelOp,
+    DrawScalarPanelSpec,
+    DrawScalarPanelStyle,
+    DrawScalarPanelValue,
     DrawSelect,
     DrawSumOp,
     DrawSumSpec,
@@ -171,9 +176,102 @@ def _normalize_selector_values(raw: Any) -> List[str]:
     return []
 
 
+def _selector_ref_key(raw: Any) -> str | None:
+    values = _normalize_selector_values(raw)
+    for value in values:
+        if value.startswith("ref:"):
+            return value[len("ref:") :]
+        if value.startswith("n") and value[1:].isdigit():
+            return value
+    return None
+
+
+def _first_finite_scalar(rows: List[Any]) -> float | None:
+    for row in rows:
+        value = getattr(row, "value", None)
+        if value is None:
+            continue
+        try:
+            numeric = float(value)
+        except Exception:
+            continue
+        if math.isfinite(numeric):
+            return numeric
+    return None
+
+
+def _scalar_ref_pair(op: OperationSpec, runtime: Dict[str, List[Any]]) -> Dict[str, Any] | None:
+    inputs = list(op.meta.inputs if op.meta else [])
+    left_ref = _selector_ref_key(getattr(op, "targetA", None))
+    right_ref = _selector_ref_key(getattr(op, "targetB", None))
+    if left_ref is None and len(inputs) >= 1:
+        left_ref = str(inputs[0])
+    if right_ref is None and len(inputs) >= 2:
+        right_ref = str(inputs[1])
+    if not left_ref or not right_ref:
+        return None
+
+    left_rows = list(runtime.get(left_ref, []))
+    right_rows = list(runtime.get(right_ref, []))
+    if not left_rows or not right_rows:
+        return None
+    left_value = _first_finite_scalar(left_rows)
+    right_value = _first_finite_scalar(right_rows)
+    if left_value is None or right_value is None:
+        return None
+
+    left_label = str(getattr(left_rows[0], "name", "") or f"ref:{left_ref}")
+    right_label = str(getattr(right_rows[0], "name", "") or f"ref:{right_ref}")
+    left_target = getattr(left_rows[0], "target", None)
+    right_target = getattr(right_rows[0], "target", None)
+    return {
+        "left": {
+            "ref": left_ref,
+            "label": left_label,
+            "value": left_value,
+            "target": str(left_target) if left_target is not None else None,
+        },
+        "right": {
+            "ref": right_ref,
+            "label": right_label,
+            "value": right_value,
+            "target": str(right_target) if right_target is not None else None,
+        },
+    }
+
+
+def _is_chart_backed_target(target: Any, domain: Set[str]) -> bool:
+    if target is None:
+        return False
+    text = str(target)
+    if not text or text.startswith("__"):
+        return False
+    return text in domain
+
+
 def _first_selector_target(raw: Any) -> str | None:
     values = _normalize_selector_values(raw)
     return values[0] if values else None
+
+
+def _resolve_selector_target(raw: Any, runtime: Dict[str, List[Any]]) -> str | None:
+    target = _first_selector_target(raw)
+    if not target:
+        return None
+    ref_key: str | None = None
+    if target.startswith("ref:"):
+        ref_key = target[len("ref:") :]
+    elif target.startswith("n") and target[1:].isdigit():
+        ref_key = target
+    if not ref_key:
+        return target
+    rows = runtime.get(ref_key, [])
+    if not rows:
+        return target
+    runtime_target = getattr(rows[0], "target", None)
+    if runtime_target is None:
+        return target
+    return str(runtime_target)
 
 
 def _contiguous_runs(targets: List[str], domain: List[str]) -> List[List[str]]:
@@ -194,9 +292,14 @@ def _contiguous_runs(targets: List[str], domain: List[str]) -> List[List[str]]:
     return runs
 
 
-def _series_pair_line_from_compare_like(meta: DrawMeta, op: OperationSpec, color: str) -> DrawLineOp | None:
-    target_a = _first_selector_target(getattr(op, "targetA", None))
-    target_b = _first_selector_target(getattr(op, "targetB", None))
+def _series_pair_line_from_compare_like(
+    meta: DrawMeta,
+    op: OperationSpec,
+    color: str,
+    runtime: Dict[str, List[Any]],
+) -> DrawLineOp | None:
+    target_a = _resolve_selector_target(getattr(op, "targetA", None), runtime)
+    target_b = _resolve_selector_target(getattr(op, "targetB", None), runtime)
     if not target_a or not target_b:
         return None
 
@@ -291,6 +394,7 @@ def build_draw_ops_spec(
     draw_groups: DrawOpsGroupMap = {}
     primary_dim = chart_context.primary_dimension
     primary_domain = [str(v) for v in chart_context.categorical_values.get(primary_dim, [])] if primary_dim else []
+    primary_domain_set = set(primary_domain)
 
     for group_name in _ordered_groups(ops_spec.keys()):
         group_ops = ops_spec.get(group_name, [])
@@ -309,6 +413,7 @@ def build_draw_ops_spec(
             meta = _build_meta(op)
             op_group = getattr(op, "group", None)
             scoped = bool(op_group and isinstance(op_group, str) and op_group.strip() and group_filter_action)
+            emitted_scalar_panel_diff = False
             if scoped and group_filter_action:
                 if group_filter_action == "stacked-filter-groups":
                     draw_ops.append(
@@ -372,9 +477,89 @@ def build_draw_ops_spec(
                     draw_ops.append(DrawSumOp(meta=meta, sum=DrawSumSpec(value=float(scalar), label="Sum")))
 
             if op_name in CONNECT_OPS:
-                connector = _series_pair_line_from_compare_like(meta, op, "#0ea5e9" if op_name == "compare" else "#ef4444")
-                if connector is not None:
-                    draw_ops.append(connector)
+                if op_name == "diff":
+                    pair = _scalar_ref_pair(op, runtime)
+                    if pair is not None:
+                        left_backed = _is_chart_backed_target(pair["left"].get("target"), primary_domain_set)
+                        right_backed = _is_chart_backed_target(pair["right"].get("target"), primary_domain_set)
+                        if not left_backed and not right_backed:
+                            base_node = f"{meta.nodeId or node_id}_scalar_base"
+                            diff_node = f"{meta.nodeId or node_id}_scalar_diff"
+                            left_abs = abs(float(pair["left"]["value"]))
+                            right_abs = abs(float(pair["right"]["value"]))
+                            delta_scalar = _resolve_scalar(result_rows)
+                            if delta_scalar is None:
+                                delta_scalar = abs(left_abs - right_abs)
+                            else:
+                                delta_scalar = abs(float(delta_scalar))
+                            style = DrawScalarPanelStyle(
+                                leftFill="#ef4444",
+                                rightFill="#ef4444",
+                                lineStroke="#ef4444",
+                                arrowStroke="#0ea5e9",
+                                textColor="#111827",
+                                panelFill="#ffffff",
+                                panelStroke="#cbd5e1",
+                            )
+                            draw_ops.append(
+                                DrawScalarPanelOp(
+                                    meta=DrawMeta(
+                                        source=meta.source,
+                                        nodeId=base_node,
+                                        sentenceIndex=meta.sentenceIndex,
+                                        inputs=[],
+                                    ),
+                                    scalarPanel=DrawScalarPanelSpec(
+                                        mode="base",
+                                        layout="full-replace",
+                                        absolute=True,
+                                        left=DrawScalarPanelValue(
+                                            label=str(pair["left"]["label"]),
+                                            value=left_abs,
+                                        ),
+                                        right=DrawScalarPanelValue(
+                                            label=str(pair["right"]["label"]),
+                                            value=right_abs,
+                                        ),
+                                        style=style,
+                                    ),
+                                )
+                            )
+                            draw_ops.append(
+                                DrawScalarPanelOp(
+                                    meta=DrawMeta(
+                                        source=meta.source,
+                                        nodeId=diff_node,
+                                        sentenceIndex=meta.sentenceIndex,
+                                        inputs=[base_node],
+                                    ),
+                                    scalarPanel=DrawScalarPanelSpec(
+                                        mode="diff",
+                                        layout="full-replace",
+                                        absolute=True,
+                                        left=DrawScalarPanelValue(
+                                            label=str(pair["left"]["label"]),
+                                            value=left_abs,
+                                        ),
+                                        right=DrawScalarPanelValue(
+                                            label=str(pair["right"]["label"]),
+                                            value=right_abs,
+                                        ),
+                                        delta=DrawScalarPanelDelta(label="Δ", value=float(delta_scalar)),
+                                        style=style,
+                                    ),
+                                )
+                            )
+                            emitted_scalar_panel_diff = True
+                if not emitted_scalar_panel_diff:
+                    connector = _series_pair_line_from_compare_like(
+                        meta,
+                        op,
+                        "#0ea5e9" if op_name == "compare" else "#ef4444",
+                        runtime,
+                    )
+                    if connector is not None:
+                        draw_ops.append(connector)
 
             if op_name == "pairDiff":
                 draw_ops.extend(_pair_diff_lines(meta, op, result_rows))
@@ -396,6 +581,8 @@ def build_draw_ops_spec(
                     )
 
             if op_name in SCALAR_LINE_OPS:
+                if op_name == "diff" and emitted_scalar_panel_diff:
+                    continue
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:
                     draw_ops.append(
@@ -409,6 +596,8 @@ def build_draw_ops_spec(
                     )
 
             if op_name in SCALAR_TEXT_OPS:
+                if op_name == "diff" and emitted_scalar_panel_diff:
+                    continue
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:
                     draw_ops.append(_scalar_text_op(meta, op_name, scalar))

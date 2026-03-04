@@ -64,7 +64,8 @@ def schedule_ops_spec(groups: Dict[str, List[OperationSpec]]) -> Dict[str, List[
                     if op.meta and op.meta.nodeId == n:
                         view = op.meta.view or OpsMetaView()
                         view_dict = view.model_dump() if hasattr(view, "model_dump") else dict(view)
-                        view_dict.setdefault("parallelGroup", gid)
+                        if not view_dict.get("parallelGroup"):
+                            view_dict["parallelGroup"] = gid
                         op.meta.view = OpsMetaView(**view_dict)
 
     # annotate phase + split hints around joins
@@ -86,7 +87,8 @@ def schedule_ops_spec(groups: Dict[str, List[OperationSpec]]) -> Dict[str, List[
                             if op2.meta and op2.meta.nodeId == parent:
                                 v = op2.meta.view or OpsMetaView()
                                 vd = v.model_dump() if hasattr(v, "model_dump") else dict(v)
-                                vd.setdefault("split", "horizontal")
+                                if not vd.get("split"):
+                                    vd["split"] = "horizontal"
                                 op2.meta.view = OpsMetaView(**vd)
             op.meta.view = OpsMetaView(**view_dict)
     return scheduled

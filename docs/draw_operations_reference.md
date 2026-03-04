@@ -58,6 +58,7 @@
 22. `stacked-filter-groups`
 23. `grouped-filter-groups`
 24. `band`
+25. `scalar-panel`
 
 ---
 
@@ -74,13 +75,25 @@
 - `split`: 한 차트를 두 패널(chart A/B)로 분할
 - `unsplit`: 분할 상태 복원
 - `band`: 축 구간을 얇은 직사각형으로 강조 (x/y)
+- `scalar-panel`: 스칼라 ref 비교 결과를 패널(2-bar + diff)로 표시
+  - `layout="inset"`: 인셋 패널
+  - `layout="full-replace"`: 기존 차트를 가리는 전체 크기 비교 차트
+  - `absolute=true`면 막대/Δ를 절대값 기준으로 렌더
 
 ### 3.2 부분 공통
 
-- `filter`: `simple_bar`, `stacked_bar`, `grouped_bar`, `simple_line` 지원
-  - `multi_line`은 기본 `filter` action 미지원
+- `filter`: `simple_bar`, `stacked_bar`, `grouped_bar`, `simple_line`, `multi_line` 지원
+  - line 계열은 non-split에서 in-place relayout(축 유지) 방식으로 처리
 - `sort`: `simple_bar`, `stacked_bar`, `grouped_bar` 지원
 - `bar-segment`: 바 차트(`simple/stacked/grouped`)에서 threshold 기반 세그먼트 강조
+
+### 3.3 애니메이션 정책 (중요)
+
+- 기본 최소 draw 시간: `0.5s` (`d3 transition` 기반)
+- `sleep` draw op는 새로 생성하지 않음
+- **non-split action은 remount 금지**(축/컴포넌트 유지)
+  - 허용 예외: `split`, `unsplit`
+  - 나머지는 `exit -> relayout -> enter` staged transition으로 처리
 
 ---
 
@@ -191,6 +204,9 @@
 - `sum`: `draw.action="sum"` (`sum.value`/`sum.label`)
 - `average/diff/count/compare/compareBool/add/scale`: `draw.action="line"` 수평선 + `text` 라벨
 - `compare/diff`: target selector가 있으면 `line.mode="connect"`로 두 target 연결
+- `diff`가 `ref:nX` 스칼라 결과를 비교할 때,
+  - 양쪽 target이 차트 도메인에 있으면 기존 `line.mode="connect"` 유지
+  - 양쪽 target이 차트 도메인 밖이면 `scalar-panel(layout="full-replace", absolute=true)`로 분기 (mode=`base` → `diff`)
 - `pairDiff`: groupA/groupB가 있으면 `line.connectBy(start/end series)`를 key별 생성
 - `setOp`: highlight + x-band(run 기준) 생성
 - `stacked/grouped`의 `group` scope op는 실행 전후로 `stacked-filter-groups` / `grouped-filter-groups`를 자동 삽입

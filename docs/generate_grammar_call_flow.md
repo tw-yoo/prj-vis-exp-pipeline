@@ -4,6 +4,32 @@
 
 ---
 
+## 실행 환경(LLM/TLS) 설정
+
+`/generate_grammar`는 서버 시작 시 `StructuredLLMClient` 백엔드를 고정합니다.
+
+- 기본: `OPENAI_API_KEY`가 있으면 ChatGPT(OpenAI HTTP) 사용
+- 강제 로컬: `LLM_BACKEND=ollama` 설정 시 로컬 Ollama 고정
+
+권장 환경변수:
+
+- OpenAI
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL` (기본 `gpt-4o-mini`)
+  - `OPENAI_BASE_URL` (기본 `https://api.openai.com/v1`)
+- Ollama
+  - `LLM_BACKEND=ollama`
+  - `OLLAMA_MODEL`
+  - `OLLAMA_BASE_URL`
+
+TLS/인증서:
+
+- HTTPS 호출 시 `SSL_CERT_FILE`이 지정되면 해당 CA 번들을 우선 사용합니다.
+- `SSL_CERT_FILE`이 없으면 `certifi` CA 번들을 자동 사용하고, 없을 때만 Python 기본 trust store를 사용합니다.
+- 운영/재현 테스트에서 SSL 우회(monkeypatch)는 사용하지 않습니다.
+
+---
+
 ## 0) 전제: pipeline 인스턴스 생성/로딩
 
 1) 서버 시작 시 FastAPI lifespan이 실행됩니다.

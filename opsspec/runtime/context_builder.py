@@ -18,38 +18,70 @@ def _is_number(value: Any) -> bool:
 
 
 def _extract_encoding_summary(spec: Dict[str, Any]) -> Dict[str, Dict[str, JsonValue]]:
-    encoding = spec.get("encoding")
-    if not isinstance(encoding, dict):
-        return {}
-
     out: Dict[str, Dict[str, JsonValue]] = {}
-    for channel, raw in encoding.items():
-        if not isinstance(channel, str):
-            continue
-        source: Optional[Dict[str, Any]] = None
-        if isinstance(raw, dict):
-            source = raw
-        elif isinstance(raw, list) and raw and isinstance(raw[0], dict):
-            source = raw[0]
-        if source is None:
-            continue
+    sources: List[Dict[str, Any]] = []
 
-        out[channel] = {
-            "field": _as_text(source.get("field")) or None,
-            "type": _as_text(source.get("type")) or None,
-            "title": _as_text(source.get("title")) or None,
-            "aggregate": _as_text(source.get("aggregate")) or None,
-            "stack": source.get("stack") if "stack" in source else None,
-        }
+    top_encoding = spec.get("encoding")
+    if isinstance(top_encoding, dict):
+        sources.append(top_encoding)
+
+    layered = spec.get("layer")
+    if isinstance(layered, list):
+        for layer in layered:
+            if not isinstance(layer, dict):
+                continue
+            layer_encoding = layer.get("encoding")
+            if isinstance(layer_encoding, dict):
+                sources.append(layer_encoding)
+
+    for encoding in sources:
+        for channel, raw in encoding.items():
+            if not isinstance(channel, str):
+                continue
+            source: Optional[Dict[str, Any]] = None
+            if isinstance(raw, dict):
+                source = raw
+            elif isinstance(raw, list) and raw and isinstance(raw[0], dict):
+                source = raw[0]
+            if source is None:
+                continue
+
+            # Preserve the first meaningful channel mapping (top-level first, then layer order).
+            if channel in out and out[channel].get("field"):
+                continue
+
+            out[channel] = {
+                "field": _as_text(source.get("field")) or None,
+                "type": _as_text(source.get("type")) or None,
+                "title": _as_text(source.get("title")) or None,
+                "aggregate": _as_text(source.get("aggregate")) or None,
+                "stack": source.get("stack") if "stack" in source else None,
+            }
     return out
 
 
 def _extract_mark(spec: Dict[str, Any]) -> str:
+    def _from_mark(raw_mark: Any) -> str:
+        if isinstance(raw_mark, str):
+            return raw_mark
+        if isinstance(raw_mark, dict):
+            return _as_text(raw_mark.get("type")) or "unknown"
+        return "unknown"
+
     mark = spec.get("mark")
-    if isinstance(mark, str):
-        return mark
-    if isinstance(mark, dict):
-        return _as_text(mark.get("type")) or "unknown"
+    top = _from_mark(mark)
+    if top != "unknown":
+        return top
+
+    layered = spec.get("layer")
+    if isinstance(layered, list):
+        for layer in layered:
+            if not isinstance(layer, dict):
+                continue
+            layer_mark = _from_mark(layer.get("mark"))
+            if layer_mark != "unknown":
+                return layer_mark
+
     return "unknown"
 
 

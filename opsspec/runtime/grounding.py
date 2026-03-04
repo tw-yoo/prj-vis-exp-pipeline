@@ -82,8 +82,14 @@ def resolve_domain_values(
     warnings: List[str] = []
 
     series_domain: List[Any] = []
-    if chart_context.series_field:
-        series_domain = list(chart_context.categorical_values.get(chart_context.series_field, []))
+    series_field_for_group: Optional[str] = None
+    raw_series_field = updated.get("seriesField")
+    if isinstance(raw_series_field, str) and raw_series_field in chart_context.categorical_values:
+        series_field_for_group = raw_series_field
+    elif chart_context.series_field:
+        series_field_for_group = chart_context.series_field
+    if series_field_for_group:
+        series_domain = list(chart_context.categorical_values.get(series_field_for_group, []))
 
     def _resolve_series_value(key: str) -> None:
         raw = updated.get(key)
@@ -186,6 +192,28 @@ def _normalize_field_name(
     return raw_field, None
 
 
+def _normalize_field_like_key(
+    payload: Dict[str, Any],
+    *,
+    key: str,
+    chart_context: ChartContext,
+) -> Tuple[Dict[str, Any], List[str]]:
+    if key not in payload:
+        return payload, []
+    raw = payload.get(key)
+    if not isinstance(raw, str):
+        return payload, []
+    if raw in chart_context.fields:
+        return payload, []
+    lower = raw.lower()
+    for canonical in chart_context.fields:
+        if canonical.lower() == lower:
+            out = dict(payload)
+            out[key] = canonical
+            return out, [f'{key} "{raw}" normalized to "{canonical}" (case mismatch)']
+    return payload, []
+
+
 def ground_op_spec(
     op_spec: Dict[str, Any],
     *,
@@ -202,6 +230,16 @@ def ground_op_spec(
         if warn:
             field_warnings.append(warn)
             field_normalized["field"] = normalized_field
+
+    # pairDiff / compare 계열의 field-like 키 정규화(by, seriesField)
+    field_normalized, by_warnings = _normalize_field_like_key(
+        field_normalized, key="by", chart_context=chart_context
+    )
+    field_warnings.extend(by_warnings)
+    field_normalized, series_warnings = _normalize_field_like_key(
+        field_normalized, key="seriesField", chart_context=chart_context
+    )
+    field_warnings.extend(series_warnings)
 
     domain_resolved, domain_warnings = resolve_domain_values(field_normalized, chart_context=chart_context)
     return domain_resolved, token_warnings + field_warnings + domain_warnings

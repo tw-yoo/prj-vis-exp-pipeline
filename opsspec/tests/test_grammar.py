@@ -43,6 +43,9 @@ spec_0pzdf7hfbxgjghsa = {
         DiffOp(
             id="n3",
             meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=1),
+            field="Production in billion heads",
+            targetA="ref:n1",
+            targetB="ref:n2"
         )
     ],
     "ops2": [
@@ -50,18 +53,20 @@ spec_0pzdf7hfbxgjghsa = {
             id="n4",
             meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
             field="Year",
-            target="2016"
+            target="2017"
         ),
         RetrieveValueOp(
             id="n5",
             meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=2),
             field="Year",
-            target="2017"
+            target="2018"
         ),
         DiffOp(
             id="n6",
             meta=OpsMeta(nodeId="n6", inputs=["n4", "n5"], sentenceIndex=2),
-
+            field="Production in billion heads",
+            targetA="ref:n4",
+            targetB="ref:n5"
         )
     ],
     "ops3": [
@@ -73,7 +78,7 @@ spec_0pzdf7hfbxgjghsa = {
         )
     ]
 }
-spec_0k7bm9iqewnrzj47 = { # Find the top three values라고 되어있지만, average 계산을 해야 하기 때문에 filter 해야 함.
+spec_0k7bm9iqewnrzj47 = {
     "ops": [
         FilterOp(
             id="n1",

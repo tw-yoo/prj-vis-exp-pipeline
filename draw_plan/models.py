@@ -125,6 +125,54 @@ class DrawSumSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DrawScalarPanelValue(BaseModel):
+    label: str
+    value: float
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawScalarPanelDelta(BaseModel):
+    label: str | None = None
+    value: float
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawScalarPanelPosition(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawScalarPanelStyle(BaseModel):
+    leftFill: str | None = None
+    rightFill: str | None = None
+    panelFill: str | None = None
+    panelStroke: str | None = None
+    lineStroke: str | None = None
+    arrowStroke: str | None = None
+    textColor: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawScalarPanelSpec(BaseModel):
+    mode: Literal["base", "diff"] = "base"
+    layout: Literal["inset", "full-replace"] | None = None
+    absolute: bool | None = None
+    left: DrawScalarPanelValue
+    right: DrawScalarPanelValue
+    delta: DrawScalarPanelDelta | None = None
+    position: DrawScalarPanelPosition | None = None
+    style: DrawScalarPanelStyle | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DrawOpBase(BaseModel):
     op: Literal["draw"] = "draw"
     action: str
@@ -199,6 +247,11 @@ class DrawSumOp(DrawOpBase):
     sum: DrawSumSpec
 
 
+class DrawScalarPanelOp(DrawOpBase):
+    action: Literal["scalar-panel"] = "scalar-panel"
+    scalarPanel: DrawScalarPanelSpec
+
+
 DrawOperation: TypeAlias = Annotated[
     Union[
         DrawClearOp,
@@ -209,6 +262,7 @@ DrawOperation: TypeAlias = Annotated[
         DrawGroupedFilterGroupsOp,
         DrawBandOp,
         DrawSumOp,
+        DrawScalarPanelOp,
     ],
     Field(discriminator="action"),
 ]
