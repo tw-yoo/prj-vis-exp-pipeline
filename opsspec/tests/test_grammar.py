@@ -365,6 +365,7 @@ spec_0egzejn5mejtnfdm = {
         FilterOp(
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Region",
             group="Scotland"
         ),
         FindExtremumOp(
@@ -378,6 +379,7 @@ spec_0egzejn5mejtnfdm = {
         FilterOp(
             id="n3",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=2),
+            field="Region",
             group="England & Wales"
         ),
         FindExtremumOp(
