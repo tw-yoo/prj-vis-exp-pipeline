@@ -19,7 +19,7 @@ spec_0o12tngadmjjux2n = {
     "ops2": [
         FilterOp(
             id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
             field="Percentage_of_Respondents",
             operator=">",
             value="ref:n1"
@@ -40,39 +40,37 @@ spec_0pzdf7hfbxgjghsa = {
             field="Year",
             target="2017"
         ),
-        DiffOp(
-            id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=1),
-            field="Production in billion heads",
-            targetA="ref:n1",
-            targetB="ref:n2"
-        )
     ],
     "ops2": [
         RetrieveValueOp(
-            id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
             field="Year",
             target="2017"
         ),
         RetrieveValueOp(
-            id="n5",
-            meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=2),
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
             field="Year",
             target="2018"
         ),
-        DiffOp(
-            id="n6",
-            meta=OpsMeta(nodeId="n6", inputs=["n4", "n5"], sentenceIndex=2),
-            field="Production in billion heads",
-            targetA="ref:n4",
-            targetB="ref:n5"
-        )
     ],
     "ops3": [
         DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n1", "n2"], sentenceIndex=3),
+            targetA="ref:n1",
+            targetB="ref:n2",
+        ),
+        DiffOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n3", "n4"], sentenceIndex=3),
+            targetA="ref:n3",
+            targetB="ref:n4",
+        ),
+        DiffOp(
             id="n7",
-            meta=OpsMeta(nodeId="n7", inputs=["n3", "n6"], sentenceIndex=3),
+            meta=OpsMeta(nodeId="n7", inputs=["n5", "n6"], sentenceIndex=3),
             targetA="ref:n3",
             targetB="ref:n6",
         )

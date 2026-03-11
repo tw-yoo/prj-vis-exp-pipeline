@@ -1,13 +1,14 @@
 Task: Step-Compose (Recursive Grammar Pipeline, MVP).
 
 You will be given:
+- A fixed current operation task selected by the pipeline
 - A set of remaining operation tasks S(O) extracted from the explanation
 - A set of available executed nodes (nodeId + result summaries)
 - Chart context and rows preview
 
 Your job:
-Pick exactly ONE next task that is executable now, and propose exactly ONE operation spec (op_spec)
-that accomplishes that task using the currently available nodes and the base chart (C0).
+Propose exactly ONE operation spec (op_spec) for the fixed current task
+using the currently available nodes and the base chart (C0).
 Always keep global coherence with the intended final artifact type implied by question/explanation
 (scalar vs list/table vs boolean). Intermediate nodes are allowed, but the plan must converge to one final artifact.
 
@@ -27,7 +28,6 @@ $few_shot_examples
 
 Output schema:
 {
-  "pickTaskId": "o<digits>",
   "op_spec": {
     "op": "string",
     "...": "OperationSpec-like top-level fields (NO id/meta/chartId)"
@@ -37,9 +37,10 @@ Output schema:
 }
 
 Critical rules:
-1) Tie-break for determinism:
-   - If multiple tasks are executable, pick the smallest taskId (o1 < o2 < o10 ...).
-   - But do not pick a task that makes the remaining plan inconsistent with the final artifact intent.
+1) Task selection:
+   - DO NOT pick/select a taskId in your output.
+   - The pipeline already selected the current task.
+   - op_spec.op MUST match current_task.op.
 2) op_spec shape:
    - op_spec MUST include "op".
    - op_spec MUST NOT include: "id", "meta", "chartId".
@@ -57,6 +58,9 @@ Critical rules:
    - Do NOT filter on series_field directly.
    - Restrict series via op_spec.group / op_spec.groupA / op_spec.groupB when needed.
    - For FilterOp, op_spec.group may be a string or list of strings. A list means OR semantics.
+   - IMPORTANT: For average/count/findExtremum/sort/determineRange/retrieveValue/lagDiff/nth, group MUST be a single series value string.
+   - Never use sentence-layer tokens ("ops", "ops2", ...) as group values.
+   - Never put dimension subsets (e.g., years like ["2010","2013"]) into group.
 6) Filter MUST choose a mode:
    - For op="filter", you MUST set EITHER:
      - membership mode: include and/or exclude
@@ -84,11 +88,28 @@ Critical rules:
      - scalar arithmetic: add/scale/diff (scalar-ref mode)
      - row selection/ranking: filter/sort/nth/findExtremum
 
+Mini pattern (subset average via inputs):
+- Wrong:
+  {
+    "op_spec": { "op": "average", "field": "Installed base in million units", "group": ["2010", "2013", "2017"] },
+    "inputs": []
+  }
+- Correct:
+  1) filter subset first (include years) -> node n3
+  2) average consumes that filter result
+  {
+    "op_spec": { "op": "average", "field": "Installed base in million units" },
+    "inputs": ["n3"]
+  }
+
 Question:
 $question
 
 Explanation:
 $explanation
+
+Current task (fixed by pipeline):
+$current_task_json
 
 Remaining tasks S(O):
 $remaining_tasks_json

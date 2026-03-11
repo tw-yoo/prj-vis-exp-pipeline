@@ -376,9 +376,13 @@ def _format_step_compose_example_output(spec: Dict[str, List[OperationSpec]], ma
             if k not in {"id", "meta", "chartId", "_group"}
         }
         item = {
+            "currentTask": {
+                "taskId": f"o{idx}",
+                "op": str(node.get("op") or ""),
+                "sentenceIndex": int(meta.get("sentenceIndex") or 1),
+            },
             "availableNodeIds": list(available_ids),
             "output": {
-                "pickTaskId": f"o{idx}",
                 "op_spec": op_spec,
                 "inputs": list(meta.get("inputs") or []),
                 "warnings": [],
@@ -447,16 +451,43 @@ def build_step_compose_few_shot_examples(
     steps_per_example: int = 3,
     max_chars: int = 7000,
 ) -> FewShotBundle:
+    canonical_subset_average = [
+        "[StepCompose Canonical Pattern | subset_average_via_inputs]",
+        "Rule: For dimension subsets (e.g., years), do NOT use op_spec.group on average/count/findExtremum.",
+        "Rule: First make a filter node, then consume it via inputs.",
+        "ExampleCurrentTask:",
+        json.dumps(
+            {
+                "taskId": "oX",
+                "op": "average",
+                "sentenceIndex": 2,
+                "mention": "average for years 2010, 2013, 2017",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "ExampleOutputJSON:",
+        json.dumps(
+            {
+                "op_spec": {"op": "average", "field": "Installed base in million units"},
+                "inputs": ["n3"],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "",
+    ]
     selected = _pick_examples(
         question=question,
         explanation=explanation,
         chart_context=chart_context,
         max_examples=max_examples,
     )
+    lines: List[str] = list(canonical_subset_average)
     if not selected:
-        return FewShotBundle(text="(no few-shot examples available)", ids=[])
+        return FewShotBundle(text="\n".join(lines).strip(), ids=[])
 
-    lines: List[str] = []
     used_ids: List[str] = []
     for idx, ex in enumerate(selected, start=1):
         block = [

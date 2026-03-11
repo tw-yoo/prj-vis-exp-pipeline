@@ -56,9 +56,9 @@ Rules:
     - { "op": "filter", "paramsHint": { "field": "@series_field", "include": ["A","B"] } }
     - { "op": "filter", "paramsHint": { "field": "<series_field>", "include": ["A","B"] } }
   - If the explanation says "filter only A and B" and A/B are series values (from series_domain):
-    - Do NOT output a filter task.
+    - Do NOT output a standalone filter task.
     - Add a warning.
-    - Later steps will express series restriction via op_spec.group on the real operations (average/filter/etc).
+    - Later steps should express series restriction via op_spec.group on substantive operations.
 - Phrase mapping (non-draw meaning behind common visual phrases):
   - "average line" implies an "average" operation task (the *line drawing* itself is visual and should be in warnings).
   - "highlight bars above X" implies a "filter" operation task (the *highlight* itself is visual and should be in warnings).
@@ -84,8 +84,8 @@ Rules:
     - comparison mode: operator AND value (both)
     - group-only mode: group only (series restriction)
   - In membership mode, paramsHint.field may be any categorical field (except series_field).
-  - If the explanation says "filter only A and B" and A/B are series values (from series_domain),
-    you MAY create a group-only filter task using paramsHint.group.
+  - If the explanation only says "filter only A and B" and A/B are series values (from series_domain),
+    do NOT create a group-only filter task; attach the series restriction to other substantive tasks via paramsHint.group.
 
 Question:
 $question

@@ -5,6 +5,8 @@ from typing import Any, Dict, Iterable, List, Set
 
 from opsspec.runtime.executor import OpsSpecExecutor
 from opsspec.core.models import ChartContext
+from opsspec.specs.filter import FilterOp
+from opsspec.specs.aggregate import RetrieveValueOp
 from opsspec.specs.union import OperationSpec
 
 from .chart_type import ChartKind, derive_chart_kind
@@ -18,9 +20,12 @@ from .models import (
     DrawHighlightOp,
     DrawLineConnectBySpec,
     DrawLineConnectEndpoint,
+    DrawLineConnectPanelScalarSpec,
     DrawLineConnectSpec,
     DrawLineHorizontalFromYSpec,
     DrawLineHorizontalSpec,
+    DrawLinePanelScalarConnectSpec,
+    DrawLinePanelScalarEndpoint,
     DrawLineOp,
     DrawLinePairSpec,
     DrawLineStyle,
@@ -36,6 +41,8 @@ from .models import (
     DrawSumSpec,
     DrawStackedFilterGroupsOp,
     DrawStyle,
+    DrawSplitOp,
+    DrawSplitSpec,
     DrawTextNormalizedPosition,
     DrawTextOp,
     DrawTextSpec,
@@ -82,6 +89,12 @@ def _build_meta(op: OperationSpec) -> DrawMeta:
     return DrawMeta(nodeId=node_id, sentenceIndex=sentence_index, inputs=inputs)
 
 
+def _node_sort_key(node_id: str) -> tuple[int, str]:
+    if isinstance(node_id, str) and node_id.startswith("n") and node_id[1:].isdigit():
+        return (int(node_id[1:]), node_id)
+    return (10**9, str(node_id))
+
+
 def _unique_targets(result_rows: List[Any]) -> List[str]:
     out: List[str] = []
     seen: Set[str] = set()
@@ -119,6 +132,54 @@ def _group_filter_action(chart_kind: ChartKind) -> str | None:
     if chart_kind == "grouped_bar":
         return "grouped-filter-groups"
     return None
+
+
+def _normalize_orientation(raw: Any) -> str | None:
+    if not isinstance(raw, str):
+        return None
+    token = raw.strip().lower()
+    if token not in {"horizontal", "vertical"}:
+        return None
+    return token
+
+
+def _scalar_axis_bounds(chart_context: ChartContext, field: str | None) -> tuple[float, float] | None:
+    candidates: List[str] = []
+    if isinstance(field, str) and field.strip():
+        candidates.append(field.strip())
+    if isinstance(chart_context.primary_measure, str) and chart_context.primary_measure.strip():
+        candidates.append(chart_context.primary_measure.strip())
+    for key in candidates:
+        stats = chart_context.numeric_stats.get(key)
+        if stats is None:
+            continue
+        lo = float(stats.min)
+        hi = float(stats.max)
+        if not math.isfinite(lo) or not math.isfinite(hi):
+            continue
+        if lo == hi:
+            hi = lo + 1.0
+        domain_lo = min(lo, 0.0)
+        domain_hi = max(hi, 0.0)
+        if domain_hi <= domain_lo:
+            domain_hi = domain_lo + 1.0
+        return domain_lo, domain_hi
+    return None
+
+
+def _normalized_scalar_y(chart_context: ChartContext, field: str | None, value: float) -> float | None:
+    if not math.isfinite(value):
+        return None
+    bounds = _scalar_axis_bounds(chart_context, field)
+    if bounds is None:
+        return None
+    lo, hi = bounds
+    if hi <= lo:
+        return 0.5
+    ratio = (value - lo) / (hi - lo)
+    ratio = max(0.0, min(1.0, ratio))
+    # draw.text normalized y uses bottom=0, top=1.
+    return ratio
 
 
 def _resolve_range_band(result_rows: List[Any]) -> DrawBandSpec | None:
@@ -368,6 +429,154 @@ def _scalar_text_op(meta: DrawMeta, op_name: str, scalar: float) -> DrawTextOp:
     )
 
 
+def _merge_inputs(inputs: List[str], extra_inputs: List[str]) -> List[str]:
+    merged: List[str] = []
+    for value in list(inputs or []) + list(extra_inputs or []):
+        if not isinstance(value, str) or not value:
+            continue
+        if value not in merged:
+            merged.append(value)
+    return merged
+
+
+def _with_draw_context(draw_op: Any, *, chart_id: str | None, extra_inputs: List[str]) -> Any:
+    update: Dict[str, Any] = {}
+    if chart_id is not None:
+        update["chartId"] = chart_id
+    if extra_inputs:
+        meta = draw_op.meta.model_copy(update={"inputs": _merge_inputs(list(draw_op.meta.inputs or []), extra_inputs)})
+        update["meta"] = meta
+    if not update:
+        return draw_op
+    return draw_op.model_copy(update=update)
+
+
+def _collect_edges(ops_spec: Dict[str, List[OperationSpec]]) -> Dict[str, Set[str]]:
+    edges: Dict[str, Set[str]] = {}
+    for ops in ops_spec.values():
+        for op in ops:
+            node_id = (op.meta.nodeId if op.meta else None) or op.id
+            if not node_id:
+                continue
+            edges[node_id] = set(op.meta.inputs if op.meta else [])
+    return edges
+
+
+def _index_nodes(ops_spec: Dict[str, List[OperationSpec]]) -> Dict[str, OperationSpec]:
+    node_map: Dict[str, OperationSpec] = {}
+    for ops in ops_spec.values():
+        for op in ops:
+            node_id = (op.meta.nodeId if op.meta else None) or op.id
+            if node_id:
+                node_map[node_id] = op
+    return node_map
+
+
+def _supports_split(chart_kind: ChartKind) -> bool:
+    return chart_kind in {"simple_bar", "grouped_bar", "stacked_bar", "simple_line", "multi_line"}
+
+
+def _infer_selector_values(op: OperationSpec) -> List[str]:
+    if isinstance(op, FilterOp):
+        if isinstance(op.include, list) and op.include:
+            return [str(value) for value in op.include if value is not None]
+        group = getattr(op, "group", None)
+        if isinstance(group, str) and group:
+            return [group]
+        if isinstance(group, list):
+            return [str(value) for value in group if value is not None]
+        return []
+
+    if isinstance(op, RetrieveValueOp):
+        target = getattr(op, "target", None)
+        if target is None:
+            return []
+        if isinstance(target, list):
+            return [str(value) for value in target if value is not None and not str(value).startswith("ref:")]
+        if isinstance(target, (str, int, float)) and not str(target).startswith("ref:"):
+            return [str(target)]
+
+    group = getattr(op, "group", None)
+    if isinstance(group, str) and group:
+        return [group]
+    if isinstance(group, list):
+        return [str(value) for value in group if value is not None]
+    return []
+
+
+def _infer_split_plans(
+    ops_spec: Dict[str, List[OperationSpec]],
+    *,
+    chart_kind: ChartKind,
+) -> Dict[str, Dict[str, Any]]:
+    if not _supports_split(chart_kind):
+        return {}
+
+    node_map = _index_nodes(ops_spec)
+    edges = _collect_edges(ops_spec)
+    split_members: Dict[str, Dict[str, Set[str]]] = {}
+    join_inputs: Dict[str, List[str]] = {}
+    join_orientations: Dict[str, str] = {}
+
+    for node_id, op in node_map.items():
+        view = op.meta.view if op.meta else None
+        if not view or not view.splitGroup:
+            continue
+        split_group = str(view.splitGroup)
+        if view.joinBarrier:
+            join_inputs[split_group] = sorted(list(edges.get(node_id, set())), key=_node_sort_key)
+            orientation = _normalize_orientation(getattr(view, "split", None))
+            if orientation is not None:
+                join_orientations[split_group] = orientation
+            continue
+        panel_id = str(view.panelId or "")
+        if not panel_id:
+            continue
+        split_members.setdefault(split_group, {}).setdefault(panel_id, set()).add(node_id)
+
+    split_plans: Dict[str, Dict[str, Any]] = {}
+    for split_group, panels in split_members.items():
+        if sorted(panels.keys()) != ["left", "right"]:
+            continue
+
+        groups_payload: Dict[str, List[str]] = {}
+        valid = True
+        for panel_id in ("left", "right"):
+            branch_nodes = panels.get(panel_id, set())
+            roots = [
+                node_id
+                for node_id in sorted(branch_nodes, key=_node_sort_key)
+                if not (edges.get(node_id, set()) & branch_nodes)
+            ]
+            if len(roots) != 1:
+                valid = False
+                break
+            root_op = node_map.get(roots[0])
+            if root_op is None:
+                valid = False
+                break
+            selector_values = _infer_selector_values(root_op)
+            if not selector_values:
+                valid = False
+                break
+            groups_payload[panel_id] = selector_values
+
+        join_parents = join_inputs.get(split_group) or []
+        if not valid or len(groups_payload) != 2 or len(join_parents) != 2:
+            continue
+
+        split_plans[split_group] = {
+            "split": DrawSplitSpec(
+                by="x",
+                groups=groups_payload,
+                orientation=join_orientations.get(split_group, "horizontal"),
+            ),
+            "join_inputs": join_parents,
+            "split_node_id": f"{split_group}_split",
+        }
+    return split_plans
+
+
 def build_draw_ops_spec(
     *,
     ops_spec: Dict[str, List[OperationSpec]],
@@ -386,6 +595,7 @@ def build_draw_ops_spec(
     """
     chart_kind = derive_chart_kind(vega_lite_spec, chart_context)
     group_filter_action = _group_filter_action(chart_kind)
+    split_plans = _infer_split_plans(ops_spec, chart_kind=chart_kind)
 
     executor = OpsSpecExecutor(chart_context)
     executor.execute(rows=data_rows, ops_spec=ops_spec)
@@ -395,6 +605,8 @@ def build_draw_ops_spec(
     primary_dim = chart_context.primary_dimension
     primary_domain = [str(v) for v in chart_context.categorical_values.get(primary_dim, [])] if primary_dim else []
     primary_domain_set = set(primary_domain)
+    active_splits: Set[str] = set()
+    scalar_anchors: Dict[str, Dict[str, Any]] = {}
 
     for group_name in _ordered_groups(ops_spec.keys()):
         group_ops = ops_spec.get(group_name, [])
@@ -411,22 +623,53 @@ def build_draw_ops_spec(
                 continue
 
             meta = _build_meta(op)
+            view = op.meta.view if op.meta else None
+            split_group = str(view.splitGroup) if view and view.splitGroup else None
+            panel_id = str(view.panelId) if view and view.panelId else None
+            split_plan = split_plans.get(split_group or "") if split_group else None
+            draw_chart_id = panel_id if split_plan and split_group in active_splits else None
+            extra_inputs: List[str] = []
+            if split_plan and panel_id and split_group not in active_splits:
+                draw_ops.append(
+                    DrawSplitOp(
+                        meta=DrawMeta(
+                            source="python-draw-plan",
+                            nodeId=str(split_plan["split_node_id"]),
+                            inputs=[],
+                        ),
+                        split=split_plan["split"],
+                    )
+                )
+                active_splits.add(split_group)
+                draw_chart_id = panel_id
+            if split_plan and panel_id and split_group in active_splits:
+                extra_inputs.append(str(split_plan["split_node_id"]))
+
             op_group = getattr(op, "group", None)
             scoped = bool(op_group and isinstance(op_group, str) and op_group.strip() and group_filter_action)
             emitted_scalar_panel_diff = False
+            emitted_panel_scalar_bridge = False
             if scoped and group_filter_action:
                 if group_filter_action == "stacked-filter-groups":
                     draw_ops.append(
-                        DrawStackedFilterGroupsOp(
-                            meta=meta,
-                            groupFilter=DrawGroupFilterSpec(groups=[str(op_group)]),
+                        _with_draw_context(
+                            DrawStackedFilterGroupsOp(
+                                meta=meta,
+                                groupFilter=DrawGroupFilterSpec(groups=[str(op_group)]),
+                            ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
                 else:
                     draw_ops.append(
-                        DrawGroupedFilterGroupsOp(
-                            meta=meta,
-                            groupFilter=DrawGroupFilterSpec(groups=[str(op_group)]),
+                        _with_draw_context(
+                            DrawGroupedFilterGroupsOp(
+                                meta=meta,
+                                groupFilter=DrawGroupFilterSpec(groups=[str(op_group)]),
+                            ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
 
@@ -434,17 +677,27 @@ def build_draw_ops_spec(
                 targets = _unique_targets(result_rows)
                 if targets:
                     draw_ops.append(
-                        DrawHighlightOp(
-                            meta=meta,
-                            select=DrawSelect(keys=targets),
-                            style=DrawStyle(color="#ef4444", opacity=1.0),
+                        _with_draw_context(
+                            DrawHighlightOp(
+                                meta=meta,
+                                select=DrawSelect(keys=targets),
+                                style=DrawStyle(color="#ef4444", opacity=1.0),
+                            ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
 
             if op_name in RANGE_BAND_OPS:
                 band = _resolve_range_band(result_rows)
                 if band is not None:
-                    draw_ops.append(DrawBandOp(meta=meta, band=band))
+                    draw_ops.append(
+                        _with_draw_context(
+                            DrawBandOp(meta=meta, band=band),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
+                        )
+                    )
 
             if op_name == "setOp":
                 targets = _unique_targets(result_rows)
@@ -455,102 +708,203 @@ def build_draw_ops_spec(
                         if len(run) < 2:
                             continue
                         draw_ops.append(
-                            DrawBandOp(
-                                meta=meta,
-                                band=DrawBandSpec(
-                                    axis="x",
-                                    range=[run[0], run[-1]],
-                                    label=getattr(op, "fn", "set"),
-                                    style=DrawBandStyle(
-                                        fill="rgba(59,130,246,0.16)",
-                                        stroke="#3b82f6",
-                                        strokeWidth=1.5,
-                                        opacity=1.0,
+                            _with_draw_context(
+                                DrawBandOp(
+                                    meta=meta,
+                                    band=DrawBandSpec(
+                                        axis="x",
+                                        range=[run[0], run[-1]],
+                                        label=getattr(op, "fn", "set"),
+                                        style=DrawBandStyle(
+                                            fill="rgba(59,130,246,0.16)",
+                                            stroke="#3b82f6",
+                                            strokeWidth=1.5,
+                                            opacity=1.0,
+                                        ),
                                     ),
                                 ),
+                                chart_id=draw_chart_id,
+                                extra_inputs=extra_inputs,
                             )
                         )
 
             if op_name in SUM_OPS:
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:
-                    draw_ops.append(DrawSumOp(meta=meta, sum=DrawSumSpec(value=float(scalar), label="Sum")))
+                    draw_ops.append(
+                        _with_draw_context(
+                            DrawSumOp(meta=meta, sum=DrawSumSpec(value=float(scalar), label="Sum")),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
+                        )
+                    )
 
             if op_name in CONNECT_OPS:
                 if op_name == "diff":
                     pair = _scalar_ref_pair(op, runtime)
                     if pair is not None:
-                        left_backed = _is_chart_backed_target(pair["left"].get("target"), primary_domain_set)
-                        right_backed = _is_chart_backed_target(pair["right"].get("target"), primary_domain_set)
-                        if not left_backed and not right_backed:
-                            base_node = f"{meta.nodeId or node_id}_scalar_base"
-                            diff_node = f"{meta.nodeId or node_id}_scalar_diff"
-                            left_abs = abs(float(pair["left"]["value"]))
-                            right_abs = abs(float(pair["right"]["value"]))
-                            delta_scalar = _resolve_scalar(result_rows)
-                            if delta_scalar is None:
-                                delta_scalar = abs(left_abs - right_abs)
-                            else:
-                                delta_scalar = abs(float(delta_scalar))
-                            style = DrawScalarPanelStyle(
-                                leftFill="#ef4444",
-                                rightFill="#ef4444",
-                                lineStroke="#ef4444",
-                                arrowStroke="#0ea5e9",
-                                textColor="#111827",
-                                panelFill="#ffffff",
-                                panelStroke="#cbd5e1",
-                            )
-                            draw_ops.append(
-                                DrawScalarPanelOp(
-                                    meta=DrawMeta(
-                                        source=meta.source,
-                                        nodeId=base_node,
-                                        sentenceIndex=meta.sentenceIndex,
-                                        inputs=[],
-                                    ),
-                                    scalarPanel=DrawScalarPanelSpec(
-                                        mode="base",
-                                        layout="full-replace",
-                                        absolute=True,
-                                        left=DrawScalarPanelValue(
-                                            label=str(pair["left"]["label"]),
-                                            value=left_abs,
-                                        ),
-                                        right=DrawScalarPanelValue(
-                                            label=str(pair["right"]["label"]),
-                                            value=right_abs,
-                                        ),
-                                        style=style,
-                                    ),
+                        left_anchor = scalar_anchors.get(str(pair["left"]["ref"]))
+                        right_anchor = scalar_anchors.get(str(pair["right"]["ref"]))
+                        if left_anchor and right_anchor:
+                            left_chart_id = left_anchor.get("chart_id")
+                            right_chart_id = right_anchor.get("chart_id")
+                            if (
+                                isinstance(left_chart_id, str)
+                                and isinstance(right_chart_id, str)
+                                and left_chart_id
+                                and right_chart_id
+                                and left_chart_id != right_chart_id
+                            ):
+                                orientation_hint = _normalize_orientation(
+                                    left_anchor.get("orientation") or right_anchor.get("orientation")
                                 )
-                            )
-                            draw_ops.append(
-                                DrawScalarPanelOp(
-                                    meta=DrawMeta(
-                                        source=meta.source,
-                                        nodeId=diff_node,
-                                        sentenceIndex=meta.sentenceIndex,
-                                        inputs=[base_node],
-                                    ),
-                                    scalarPanel=DrawScalarPanelSpec(
-                                        mode="diff",
-                                        layout="full-replace",
-                                        absolute=True,
-                                        left=DrawScalarPanelValue(
-                                            label=str(pair["left"]["label"]),
-                                            value=left_abs,
+                                bridge_style = DrawLineStyle(stroke="#ef4444", strokeWidth=2.0, opacity=0.95)
+                                draw_ops.append(
+                                    _with_draw_context(
+                                        DrawLineOp(
+                                            meta=meta,
+                                            line=DrawLineConnectPanelScalarSpec(
+                                                panelScalar=DrawLinePanelScalarConnectSpec(
+                                                    start=DrawLinePanelScalarEndpoint(
+                                                        chartId=left_chart_id,
+                                                        value=float(left_anchor.get("value")),
+                                                        nodeId=str(left_anchor.get("node_id"))
+                                                        if left_anchor.get("node_id")
+                                                        else None,
+                                                    ),
+                                                    end=DrawLinePanelScalarEndpoint(
+                                                        chartId=right_chart_id,
+                                                        value=float(right_anchor.get("value")),
+                                                        nodeId=str(right_anchor.get("node_id"))
+                                                        if right_anchor.get("node_id")
+                                                        else None,
+                                                    ),
+                                                    orientationHint=orientation_hint,
+                                                ),
+                                                style=bridge_style,
+                                            ),
                                         ),
-                                        right=DrawScalarPanelValue(
-                                            label=str(pair["right"]["label"]),
-                                            value=right_abs,
-                                        ),
-                                        delta=DrawScalarPanelDelta(label="Δ", value=float(delta_scalar)),
-                                        style=style,
-                                    ),
+                                        chart_id=None,
+                                        extra_inputs=extra_inputs,
+                                    )
                                 )
-                            )
-                            emitted_scalar_panel_diff = True
+                                delta_scalar = _resolve_scalar(result_rows)
+                                if delta_scalar is None:
+                                    delta_scalar = abs(float(pair["left"]["value"]) - float(pair["right"]["value"]))
+                                text_y = None
+                                left_norm_y = _normalized_scalar_y(
+                                    chart_context, getattr(op, "field", None), float(left_anchor.get("value"))
+                                )
+                                right_norm_y = _normalized_scalar_y(
+                                    chart_context, getattr(op, "field", None), float(right_anchor.get("value"))
+                                )
+                                if left_norm_y is not None and right_norm_y is not None:
+                                    text_y = max(0.04, min(0.96, (left_norm_y + right_norm_y) / 2.0 - 0.04))
+                                draw_ops.append(
+                                    _with_draw_context(
+                                        DrawTextOp(
+                                            meta=meta,
+                                            text=DrawTextSpec(
+                                                value=f"Δ {abs(float(delta_scalar)):.2f}",
+                                                mode="normalized",
+                                                position=DrawTextNormalizedPosition(
+                                                    x=0.5,
+                                                    y=text_y if text_y is not None else 0.5,
+                                                ),
+                                                style=DrawTextStyle(
+                                                    color="#111827",
+                                                    fontSize=12,
+                                                    fontWeight="bold",
+                                                    opacity=1.0,
+                                                ),
+                                            ),
+                                        ),
+                                        chart_id=None,
+                                        extra_inputs=extra_inputs,
+                                    )
+                                )
+                                emitted_panel_scalar_bridge = True
+
+                        if not emitted_panel_scalar_bridge:
+                            left_backed = _is_chart_backed_target(pair["left"].get("target"), primary_domain_set)
+                            right_backed = _is_chart_backed_target(pair["right"].get("target"), primary_domain_set)
+                            if not left_backed and not right_backed:
+                                base_node = f"{meta.nodeId or node_id}_scalar_base"
+                                diff_node = f"{meta.nodeId or node_id}_scalar_diff"
+                                left_abs = abs(float(pair["left"]["value"]))
+                                right_abs = abs(float(pair["right"]["value"]))
+                                delta_scalar = _resolve_scalar(result_rows)
+                                if delta_scalar is None:
+                                    delta_scalar = abs(left_abs - right_abs)
+                                else:
+                                    delta_scalar = abs(float(delta_scalar))
+                                style = DrawScalarPanelStyle(
+                                    leftFill="#ef4444",
+                                    rightFill="#ef4444",
+                                    lineStroke="#ef4444",
+                                    arrowStroke="#0ea5e9",
+                                    textColor="#111827",
+                                    panelFill="#ffffff",
+                                    panelStroke="#cbd5e1",
+                                )
+                                draw_ops.append(
+                                    _with_draw_context(
+                                        DrawScalarPanelOp(
+                                            meta=DrawMeta(
+                                                source=meta.source,
+                                                nodeId=base_node,
+                                                sentenceIndex=meta.sentenceIndex,
+                                                inputs=[],
+                                            ),
+                                            scalarPanel=DrawScalarPanelSpec(
+                                                mode="base",
+                                                layout="full-replace",
+                                                absolute=True,
+                                                left=DrawScalarPanelValue(
+                                                    label=str(pair["left"]["label"]),
+                                                    value=left_abs,
+                                                ),
+                                                right=DrawScalarPanelValue(
+                                                    label=str(pair["right"]["label"]),
+                                                    value=right_abs,
+                                                ),
+                                                style=style,
+                                            ),
+                                        ),
+                                        chart_id=draw_chart_id,
+                                        extra_inputs=extra_inputs,
+                                    )
+                                )
+                                draw_ops.append(
+                                    _with_draw_context(
+                                        DrawScalarPanelOp(
+                                            meta=DrawMeta(
+                                                source=meta.source,
+                                                nodeId=diff_node,
+                                                sentenceIndex=meta.sentenceIndex,
+                                                inputs=[base_node],
+                                            ),
+                                            scalarPanel=DrawScalarPanelSpec(
+                                                mode="diff",
+                                                layout="full-replace",
+                                                absolute=True,
+                                                left=DrawScalarPanelValue(
+                                                    label=str(pair["left"]["label"]),
+                                                    value=left_abs,
+                                                ),
+                                                right=DrawScalarPanelValue(
+                                                    label=str(pair["right"]["label"]),
+                                                    value=right_abs,
+                                                ),
+                                                delta=DrawScalarPanelDelta(label="Δ", value=float(delta_scalar)),
+                                                style=style,
+                                            ),
+                                        ),
+                                        chart_id=draw_chart_id,
+                                        extra_inputs=extra_inputs,
+                                    )
+                                )
+                                emitted_scalar_panel_diff = True
                 if not emitted_scalar_panel_diff:
                     connector = _series_pair_line_from_compare_like(
                         meta,
@@ -559,10 +913,23 @@ def build_draw_ops_spec(
                         runtime,
                     )
                     if connector is not None:
-                        draw_ops.append(connector)
+                        draw_ops.append(
+                            _with_draw_context(
+                                connector,
+                                chart_id=draw_chart_id,
+                                extra_inputs=extra_inputs,
+                            )
+                        )
 
             if op_name == "pairDiff":
-                draw_ops.extend(_pair_diff_lines(meta, op, result_rows))
+                for line_op in _pair_diff_lines(meta, op, result_rows):
+                    draw_ops.append(
+                        _with_draw_context(
+                            line_op,
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
+                        )
+                    )
 
             if op_name == "lagDiff":
                 for row in result_rows:
@@ -571,50 +938,88 @@ def build_draw_ops_spec(
                     if prev_target is None or cur_target is None:
                         continue
                     draw_ops.append(
-                        DrawLineOp(
-                            meta=meta,
-                            line=DrawLineConnectSpec(
-                                pair=DrawLinePairSpec(x=[str(prev_target), str(cur_target)]),
-                                style=DrawLineStyle(stroke="#0ea5e9", strokeWidth=2.0, opacity=0.9),
+                        _with_draw_context(
+                            DrawLineOp(
+                                meta=meta,
+                                line=DrawLineConnectSpec(
+                                    pair=DrawLinePairSpec(x=[str(prev_target), str(cur_target)]),
+                                    style=DrawLineStyle(stroke="#0ea5e9", strokeWidth=2.0, opacity=0.9),
+                                ),
                             ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
 
             if op_name in SCALAR_LINE_OPS:
-                if op_name == "diff" and emitted_scalar_panel_diff:
+                if op_name == "diff" and (emitted_scalar_panel_diff or emitted_panel_scalar_bridge):
                     continue
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:
                     draw_ops.append(
-                        DrawLineOp(
-                            meta=meta,
-                            line=DrawLineHorizontalFromYSpec(
-                                hline=DrawLineHorizontalSpec(y=float(scalar)),
-                                style=DrawLineStyle(stroke="#ef4444", strokeWidth=2.0, opacity=1.0),
+                        _with_draw_context(
+                            DrawLineOp(
+                                meta=meta,
+                                line=DrawLineHorizontalFromYSpec(
+                                    hline=DrawLineHorizontalSpec(y=float(scalar)),
+                                    style=DrawLineStyle(stroke="#ef4444", strokeWidth=2.0, opacity=1.0),
+                                ),
                             ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
 
             if op_name in SCALAR_TEXT_OPS:
-                if op_name == "diff" and emitted_scalar_panel_diff:
+                if op_name == "diff" and (emitted_scalar_panel_diff or emitted_panel_scalar_bridge):
                     continue
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:
-                    draw_ops.append(_scalar_text_op(meta, op_name, scalar))
+                    draw_ops.append(
+                        _with_draw_context(
+                            _scalar_text_op(meta, op_name, scalar),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
+                        )
+                    )
+
+            if op_name in {"average", "count", "add", "scale", "sum"}:
+                scalar_value = _resolve_scalar(result_rows)
+                if scalar_value is not None:
+                    orientation_hint = None
+                    if split_plan:
+                        orientation_hint = _normalize_orientation(
+                            getattr(split_plan.get("split"), "orientation", None)
+                        )
+                    scalar_anchors[str(node_id)] = {
+                        "node_id": str(node_id),
+                        "chart_id": draw_chart_id,
+                        "value": float(scalar_value),
+                        "split_group": split_group,
+                        "orientation": orientation_hint,
+                    }
 
             if scoped and group_filter_action:
                 if group_filter_action == "stacked-filter-groups":
                     draw_ops.append(
-                        DrawStackedFilterGroupsOp(
-                            meta=meta,
-                            groupFilter=DrawGroupFilterSpec(reset=True),
+                        _with_draw_context(
+                            DrawStackedFilterGroupsOp(
+                                meta=meta,
+                                groupFilter=DrawGroupFilterSpec(reset=True),
+                            ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
                 else:
                     draw_ops.append(
-                        DrawGroupedFilterGroupsOp(
-                            meta=meta,
-                            groupFilter=DrawGroupFilterSpec(reset=True),
+                        _with_draw_context(
+                            DrawGroupedFilterGroupsOp(
+                                meta=meta,
+                                groupFilter=DrawGroupFilterSpec(reset=True),
+                            ),
+                            chart_id=draw_chart_id,
+                            extra_inputs=extra_inputs,
                         )
                     )
 

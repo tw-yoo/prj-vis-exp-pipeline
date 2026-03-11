@@ -25,7 +25,7 @@ from models import (
     RunPythonPlanResponse,
 )
 from nlp_engine import NLPEngine
-from draw_plan import build_draw_ops_spec, export_draw_plan_to_public
+from draw_plan import build_draw_ops_spec, export_draw_plan_to_public, validate_draw_groups_payload
 from opsspec.modules.pipeline import OpsSpecPipeline
 from opsspec.modules.answer_pipeline import (
     ChartAnswerPipeline,
@@ -442,7 +442,17 @@ async def generate_grammar(request: GenerateGrammarRequest):
             group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
             for group_name, ops in result.ops_spec.items()
         }
-        return prune_nulls(groups_dump)
+        draw_plan_dump = validate_draw_groups_payload(
+            build_draw_ops_spec(
+                ops_spec=result.ops_spec,
+                chart_context=result.chart_context,
+                data_rows=request.data_rows,
+                vega_lite_spec=request.vega_lite_spec,
+            )
+        )
+        response_payload: Dict[str, Any] = dict(groups_dump)
+        response_payload["draw_plan"] = draw_plan_dump
+        return prune_nulls(response_payload)
     except RuntimeError as exc:
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.error(

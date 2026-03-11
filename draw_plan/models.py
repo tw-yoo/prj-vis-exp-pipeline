@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Dict, List, Literal, TypeAlias, Union
+from typing import Annotated, Any, Dict, List, Literal, TypeAlias, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -73,6 +73,22 @@ class DrawLineConnectBySpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DrawLinePanelScalarEndpoint(BaseModel):
+    chartId: str
+    value: float
+    nodeId: str | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawLinePanelScalarConnectSpec(BaseModel):
+    start: DrawLinePanelScalarEndpoint
+    end: DrawLinePanelScalarEndpoint
+    orientationHint: Literal["horizontal", "vertical"] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DrawLineHorizontalFromYSpec(BaseModel):
     mode: Literal["horizontal-from-y"] = "horizontal-from-y"
     hline: DrawLineHorizontalSpec
@@ -85,6 +101,15 @@ class DrawLineConnectSpec(BaseModel):
     mode: Literal["connect"] = "connect"
     pair: DrawLinePairSpec | None = None
     connectBy: DrawLineConnectBySpec | None = None
+    panelScalar: DrawLinePanelScalarConnectSpec | None = None
+    style: DrawLineStyle | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawLineConnectPanelScalarSpec(BaseModel):
+    mode: Literal["connect-panel-scalar"] = "connect-panel-scalar"
+    panelScalar: DrawLinePanelScalarConnectSpec
     style: DrawLineStyle | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -94,6 +119,7 @@ DrawLineSpec: TypeAlias = Annotated[
     Union[
         DrawLineHorizontalFromYSpec,
         DrawLineConnectSpec,
+        DrawLineConnectPanelScalarSpec,
     ],
     Field(discriminator="mode"),
 ]
@@ -105,6 +131,15 @@ class DrawGroupFilterSpec(BaseModel):
     keep: List[PrimitiveValue] | None = None
     exclude: List[PrimitiveValue] | None = None
     reset: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class DrawSplitSpec(BaseModel):
+    by: Literal["x"] | None = None
+    groups: Dict[str, List[PrimitiveValue]]
+    restTo: str | None = None
+    orientation: Literal["vertical", "horizontal"] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -186,6 +221,15 @@ class DrawClearOp(DrawOpBase):
     action: Literal["clear"] = "clear"
 
 
+class DrawSplitOp(DrawOpBase):
+    action: Literal["split"] = "split"
+    split: DrawSplitSpec
+
+
+class DrawUnsplitOp(DrawOpBase):
+    action: Literal["unsplit"] = "unsplit"
+
+
 class DrawHighlightOp(DrawOpBase):
     action: Literal["highlight"] = "highlight"
     select: DrawSelect = Field(default_factory=DrawSelect)
@@ -255,6 +299,8 @@ class DrawScalarPanelOp(DrawOpBase):
 DrawOperation: TypeAlias = Annotated[
     Union[
         DrawClearOp,
+        DrawSplitOp,
+        DrawUnsplitOp,
         DrawHighlightOp,
         DrawLineOp,
         DrawTextOp,
@@ -276,3 +322,23 @@ def dump_draw_groups(groups: DrawOpsGroupMap) -> Dict[str, List[Dict[str, object
         group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
         for group_name, ops in groups.items()
     }
+
+
+def validate_draw_groups_payload(payload: Dict[str, Any]) -> Dict[str, List[Dict[str, object]]]:
+    if not isinstance(payload, dict):
+        raise ValueError("draw plan payload must be an object")
+    validated: Dict[str, List[Dict[str, object]]] = {}
+    for group_name, ops in payload.items():
+        if not isinstance(group_name, str) or not group_name:
+            raise ValueError(f'Invalid draw group name: "{group_name}"')
+        if not isinstance(ops, list):
+            raise ValueError(f'draw plan group "{group_name}" must be a list')
+        validated_ops: List[Dict[str, object]] = []
+        for idx, op_payload in enumerate(ops):
+            try:
+                parsed = DrawOperationAdapter.validate_python(op_payload)
+            except Exception as exc:
+                raise ValueError(f'draw plan group "{group_name}" op[{idx}] schema error: {exc}') from exc
+            validated_ops.append(parsed.model_dump(by_alias=True, exclude_none=True))
+        validated[group_name] = validated_ops
+    return validated

@@ -14,6 +14,10 @@ from ..core.types import JsonValue
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 _NUMBERED_STEP_RE = re.compile(r"(?:^|\n)\s*(\d+)\.\s*")
 _BULLET_PREFIX_RE = re.compile(r"^\s*[-*]\s*")
+_BETWEEN_RANGE_RE = re.compile(
+    r"\bbetween\s+([0-9]{4}(?:\.[0-9]+)?)\s+and\s+([0-9]{4}(?:\.[0-9]+)?)\b",
+    re.IGNORECASE,
+)
 
 
 def split_explanation_sentences(explanation: str) -> List[str]:
@@ -57,6 +61,37 @@ def split_explanation_sentences(explanation: str) -> List[str]:
 
 def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _normalize_year_token(value: str) -> str:
+    text = str(value).strip()
+    try:
+        return str(int(float(text)))
+    except Exception:
+        return text
+
+
+def _extract_between_ranges(text: str) -> List[str]:
+    out: List[str] = []
+    for match in _BETWEEN_RANGE_RE.finditer(str(text or "")):
+        start = _normalize_year_token(match.group(1))
+        end = _normalize_year_token(match.group(2))
+        out.append(f"{start}..{end}")
+    return out
+
+
+def _build_range_mismatch_warning(question: str, explanation: str) -> Optional[str]:
+    q_ranges = sorted(set(_extract_between_ranges(question)))
+    e_ranges = sorted(set(_extract_between_ranges(explanation)))
+    if not q_ranges or not e_ranges:
+        return None
+    if q_ranges == e_ranges:
+        return None
+    return (
+        "question/explanation range mismatch detected: "
+        f"question={q_ranges}, explanation={e_ranges}. "
+        "Pipeline continues, but this may reduce inventory/step consistency."
+    )
 
 
 def render_inventory_prompt(
@@ -138,6 +173,14 @@ def run_inventory_module(
         user_prompt=user_prompt,
         task_name="opsspec_inventory",
     )
+    range_warning = _build_range_mismatch_warning(question, explanation)
+    if range_warning:
+        warnings = parsed.get("warnings")
+        if not isinstance(warnings, list):
+            warnings = []
+        if range_warning not in warnings:
+            warnings.append(range_warning)
+        parsed["warnings"] = warnings
     if include_debug_prompts:
         parsed["_debug"] = {
             "system_prompt": system_prompt,
