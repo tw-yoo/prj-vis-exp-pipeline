@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from models import (
     CanonicalizeOpsSpecRequest,
     CanonicalizeOpsSpecResponse,
+    CompileOpsPlanRequest,
+    CompileOpsPlanResponse,
     GenerateAnswerRequest,
     GenerateAnswerResponse,
     GenerateGrammarRequest,
@@ -26,6 +28,8 @@ from models import (
 )
 from nlp_engine import NLPEngine
 from draw_plan import build_draw_ops_spec, export_draw_plan_to_public, validate_draw_groups_payload
+from opsspec.runtime.scheduler import schedule_ops_spec
+from opsspec.runtime.execution_plan import build_sentence_execution_plan
 from opsspec.modules.pipeline import OpsSpecPipeline
 from opsspec.modules.answer_pipeline import (
     ChartAnswerPipeline,
@@ -437,7 +441,7 @@ async def generate_grammar(request: GenerateGrammarRequest):
             elapsed_ms,
         )
         trace_logger.info("[request:%s] grammar_endpoint_out | elapsed_ms=%.1f", request_id, elapsed_ms)
-        # Keep response minimal for the web client: only return the opsSpec groups map.
+        # Return both logical ops groups and executable draw_plan for the web client.
         groups_dump = {
             group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
             for group_name, ops in result.ops_spec.items()
@@ -450,8 +454,14 @@ async def generate_grammar(request: GenerateGrammarRequest):
                 vega_lite_spec=request.vega_lite_spec,
             )
         )
+        execution_plan_dump = build_sentence_execution_plan(
+            ops_spec=result.ops_spec,
+            draw_plan_groups=draw_plan_dump,
+        )
+
         response_payload: Dict[str, Any] = dict(groups_dump)
         response_payload["draw_plan"] = draw_plan_dump
+        response_payload["execution_plan"] = execution_plan_dump
         return prune_nulls(response_payload)
     except RuntimeError as exc:
         elapsed_ms = (time.perf_counter() - started_at) * 1000
@@ -506,6 +516,93 @@ async def generate_grammar(request: GenerateGrammarRequest):
         trace_logger.error("[request:%s] grammar_unhandled_error | elapsed_ms=%.1f error=%s", request_id, elapsed_ms, exc)
         logger.exception("Failed to generate grammar.")
         raise HTTPException(status_code=500, detail=f"Failed to parse text: {exc}") from exc
+
+
+@app.post("/compile_ops_plan", response_model=CompileOpsPlanResponse)
+async def compile_ops_plan(request: CompileOpsPlanRequest):
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    logger.info(
+        "[/compile_ops_plan] request received | request_id=%s groups=%d rows=%d",
+        request_id,
+        len(request.ops_spec or {}),
+        len(request.data_rows),
+    )
+
+    try:
+        chart_context, ctx_warnings, _ = build_chart_context(request.vega_lite_spec, request.data_rows)
+        raw_groups = request.ops_spec or {}
+        if not isinstance(raw_groups, dict):
+            raise ValueError('ops_spec must be an object like {"ops":[...],"ops2":[...]}')
+
+        groups, parse_warnings, parse_errors = validate_and_parse_ops_spec_groups(raw_groups, chart_context)
+        groups.setdefault("ops", [])
+        parse_errors.extend(validate_refs_against_node_ids(groups))
+        if parse_errors:
+            raise ValueError("Validation failed:\n- " + "\n- ".join(parse_errors))
+
+        canonical_groups, canonical_warnings = canonicalize_ops_spec_groups(groups, chart_context=chart_context)
+        scheduled_groups = schedule_ops_spec(canonical_groups)
+
+        draw_plan_dump = validate_draw_groups_payload(
+            build_draw_ops_spec(
+                ops_spec=scheduled_groups,
+                chart_context=chart_context,
+                data_rows=request.data_rows,
+                vega_lite_spec=request.vega_lite_spec,
+            )
+        )
+        execution_plan_dump = build_sentence_execution_plan(
+            ops_spec=scheduled_groups,
+            draw_plan_groups=draw_plan_dump,
+        )
+        ops_dump = {
+            group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
+            for group_name, ops in scheduled_groups.items()
+        }
+        warnings = list(ctx_warnings) + list(parse_warnings) + list(canonical_warnings)
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "[/compile_ops_plan] request completed | request_id=%s groups=%d draw_groups=%d steps=%d warnings=%d elapsed_ms=%.1f",
+            request_id,
+            len(ops_dump),
+            len(draw_plan_dump),
+            len(execution_plan_dump.get("steps") or []),
+            len(warnings),
+            elapsed_ms,
+        )
+
+        payload = CompileOpsPlanResponse(
+            ops_spec=ops_dump,
+            draw_plan=draw_plan_dump,
+            execution_plan=execution_plan_dump,
+            warnings=warnings,
+        )
+        return prune_nulls(payload.model_dump())
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.error(
+            "[/compile_ops_plan] error | request_id=%s elapsed_ms=%.1f error=%s",
+            request_id,
+            elapsed_ms,
+            exc,
+        )
+        report_path = _write_error_report(
+            endpoint="/compile_ops_plan",
+            request_id=request_id,
+            elapsed_ms=elapsed_ms,
+            error=exc,
+            request_summary={
+                "ops_groups_count": len(request.ops_spec or {}),
+                "data_rows_count": len(request.data_rows),
+                "vega_mark": request.vega_lite_spec.get("mark"),
+                "vega_encoding_fields": _extract_encoding_fields(request.vega_lite_spec),
+            },
+        )
+        if report_path is not None:
+            logger.error("[/compile_ops_plan] error report saved | request_id=%s path=%s", request_id, report_path)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/answer_question", response_model=GenerateAnswerResponse)

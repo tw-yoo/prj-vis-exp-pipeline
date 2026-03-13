@@ -135,9 +135,19 @@ class DrawGroupFilterSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class DrawSplitPanelSelector(BaseModel):
+    include: List[PrimitiveValue] | None = None
+    exclude: List[PrimitiveValue] | None = None
+    all: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class DrawSplitSpec(BaseModel):
+    mode: Literal["domain", "selector"] | None = None
     by: Literal["x"] | None = None
-    groups: Dict[str, List[PrimitiveValue]]
+    groups: Dict[str, List[PrimitiveValue]] = Field(default_factory=dict)
+    selectors: Dict[str, DrawSplitPanelSelector] | None = None
     restTo: str | None = None
     orientation: Literal["vertical", "horizontal"] | None = None
 
@@ -260,7 +270,8 @@ class DrawTextNormalizedPosition(BaseModel):
 class DrawTextSpec(BaseModel):
     value: str
     mode: Literal["normalized"] = "normalized"
-    position: DrawTextNormalizedPosition = Field(default_factory=lambda: DrawTextNormalizedPosition(x=0.92, y=0.08))
+    # Normalized coordinates follow frontend runtime convention: x,y in [0,1], y=0(bottom), y=1(top).
+    position: DrawTextNormalizedPosition = Field(default_factory=lambda: DrawTextNormalizedPosition(x=0.92, y=0.92))
     style: DrawTextStyle | None = None
 
     model_config = ConfigDict(extra="forbid")

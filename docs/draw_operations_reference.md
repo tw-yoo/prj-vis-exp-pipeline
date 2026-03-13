@@ -233,6 +233,11 @@
 
 - 각 group 시작 시 `clear`를 자동 삽입
 - `sleep` draw op는 생성하지 않음
+- normalized 좌표 규약(backend/frontend 공통):
+  - `x, y`는 `[0,1]` 범위
+  - `x=0`은 좌측, `x=1`은 우측
+  - `y=0`은 하단, `y=1`은 상단
+  - 따라서 “상단 라벨” 기본값은 `y=0.92`를 사용
 
 참고:
 - TS 런타임은 `setOp/pairDiff/add/scale` data op를 정식 지원합니다.

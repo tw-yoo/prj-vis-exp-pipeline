@@ -56,10 +56,37 @@ TLS/인증서:
 - 함수: `generate_grammar(...)`
 - 호출: `pipeline.generate(question=..., explanation=..., vega_lite_spec=..., data_rows=..., request_id=..., debug=...)`
 
-3) 응답은 “최소 형태”로 **opsSpec group map만** 반환
+3) 응답은 **opsSpec group map + draw_plan + execution_plan**을 반환
 - 파일: `main.py`
 - 함수: `generate_grammar(...)`
-- 동작: `result.ops_spec`의 각 op를 `model_dump(...)`로 dict로 변환 후 반환
+- 동작:
+  - `result.ops_spec`의 각 op를 `model_dump(...)`로 dict로 변환
+  - `build_draw_ops_spec(...)` + `validate_draw_groups_payload(...)`로 `draw_plan` 생성/검증
+  - `build_sentence_execution_plan(...)`로 sentence-step 실행 계획(`execution_plan`) 생성
+  - 최종 응답: `{ "ops": [...], "ops2": [...], ..., "draw_plan": { ... }, "execution_plan": { "mode": "sentence-step", "steps": [...] } }`
+
+---
+
+## 1-1) 엔드포인트: `/compile_ops_plan` (ops-only 입력 실행용)
+
+1) HTTP 요청을 받는 함수
+- 파일: `main.py`
+- 함수: `compile_ops_plan(request: CompileOpsPlanRequest)`
+
+2) 입력 `ops_spec`을 deterministic 단계로 정규화 후 실행 가능한 draw 계약으로 변환
+- 파일: `main.py`
+- 함수: `compile_ops_plan(...)`
+- 처리 순서:
+  - `build_chart_context(...)`
+  - `validate_and_parse_ops_spec_groups(...)`
+  - `canonicalize_ops_spec_groups(...)`
+  - `schedule_ops_spec(...)`
+  - `build_draw_ops_spec(...)` + `validate_draw_groups_payload(...)`
+  - `build_sentence_execution_plan(...)`
+
+3) 응답
+- `{ ops_spec, draw_plan, execution_plan, warnings }`
+- 클라이언트가 `draw_plan` 없이 `ops`만 가진 JSON을 넣어도 sentence-step + split/join 규칙으로 바로 실행 가능
 
 ---
 

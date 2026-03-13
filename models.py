@@ -154,6 +154,28 @@ class GenerateGrammarResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ExecutionPlanStep(BaseModel):
+    id: str = Field(..., min_length=1)
+    sentenceIndex: int = Field(..., ge=1)
+    groupNames: list[str] = Field(default_factory=list)
+    drawGroupNames: list[str] = Field(default_factory=list)
+    splitGroup: str | None = None
+    splitLifecycle: Literal["enter", "keep", "merge"] | None = None
+    panelIds: list[str] = Field(default_factory=list)
+    joinOp: str | None = None
+    joinPolicy: Literal["keep-split", "merge"] | None = None
+    parallel: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ExecutionPlan(BaseModel):
+    mode: Literal["sentence-step"] = "sentence-step"
+    steps: list[ExecutionPlanStep] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class RunPythonPlanRequest(BaseModel):
     scenario_path: str = Field(..., min_length=1)
     debug: bool = False
@@ -165,6 +187,23 @@ class RunPythonPlanResponse(BaseModel):
     scenario_path: str = Field(..., min_length=1)
     vega_lite_spec: dict = Field(default_factory=dict)
     draw_plan: dict[str, list[dict]] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CompileOpsPlanRequest(BaseModel):
+    vega_lite_spec: dict = Field(..., description="Vega-Lite spec JSON")
+    data_rows: list[dict] = Field(..., description="Raw data rows")
+    ops_spec: dict[str, list[dict]] = Field(default_factory=dict, description="OpsSpec group map (raw dict ops)")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CompileOpsPlanResponse(BaseModel):
+    ops_spec: dict[str, list[dict]] = Field(default_factory=dict)
+    draw_plan: dict[str, list[dict]] = Field(default_factory=dict)
+    execution_plan: ExecutionPlan = Field(default_factory=ExecutionPlan)
     warnings: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")

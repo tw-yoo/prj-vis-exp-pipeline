@@ -8,10 +8,11 @@ from opsspec.specs.base import OpsMeta
 from opsspec.specs.compare import CompareOp, DiffOp, PairDiffOp
 from opsspec.specs.filter import FilterOp
 from opsspec.specs.aggregate import AverageOp
+from opsspec.specs.aggregate import SumOp
 from opsspec.specs.add import AddOp
 from opsspec.specs.scale import ScaleOp
 from opsspec.specs.set_op import SetOp
-from opsspec.specs.range_sort_select import DetermineRangeOp
+from opsspec.specs.range_sort_select import DetermineRangeOp, FindExtremumOp
 from opsspec.runtime.scheduler import schedule_ops_spec
 
 
@@ -62,13 +63,16 @@ class DrawPlanTest(unittest.TestCase):
         ops = draw_plan.get("ops", [])
 
         self.assertTrue(any(op.get("action") == "line" for op in ops))
-        self.assertTrue(any(op.get("action") == "highlight" for op in ops))
+        self.assertTrue(any(op.get("action") == "text" for op in ops))
+        # Group-scoped filter should not force red highlight (preserve stacked series colors).
+        self.assertFalse(any(op.get("action") == "highlight" for op in ops))
         self.assertTrue(any(op.get("action") == "stacked-filter-groups" for op in ops))
         self.assertTrue(
             any(
-                op.get("action") == "stacked-filter-groups"
-                and isinstance(op.get("groupFilter"), dict)
-                and op.get("groupFilter", {}).get("groups") == ["rain"]
+                op.get("action") == "text"
+                and isinstance(op.get("text"), dict)
+                and isinstance(op.get("text", {}).get("position"), dict)
+                and float(op.get("text", {}).get("position", {}).get("y")) >= 0.9
                 for op in ops
             )
         )
@@ -76,7 +80,7 @@ class DrawPlanTest(unittest.TestCase):
             any(
                 op.get("action") == "stacked-filter-groups"
                 and isinstance(op.get("groupFilter"), dict)
-                and op.get("groupFilter", {}).get("reset") is True
+                and op.get("groupFilter", {}).get("groups") == ["rain"]
                 for op in ops
             )
         )
@@ -236,8 +240,10 @@ class DrawPlanTest(unittest.TestCase):
         scoped_ops2 = [op for op in ops2_group if op.get("action") != "clear"]
         self.assertTrue(scoped_ops2)
         self.assertTrue(all(op.get("chartId") == "right" for op in scoped_ops2))
+        self.assertFalse(any(op.get("action") == "clear" for op in ops2_group))
 
         self.assertFalse(any(op.get("action") == "unsplit" for op in ops3_group))
+        self.assertFalse(any(op.get("action") == "clear" for op in ops3_group))
         post_join_ops = [op for op in ops3_group if op.get("action") != "clear"]
         self.assertTrue(post_join_ops)
         self.assertTrue(all(op.get("chartId") is None for op in post_join_ops))
@@ -250,6 +256,170 @@ class DrawPlanTest(unittest.TestCase):
         bridge_spec = bridge_lines[0].get("line", {}).get("panelScalar", {})
         self.assertEqual(bridge_spec.get("start", {}).get("chartId"), "left")
         self.assertEqual(bridge_spec.get("end", {}).get("chartId"), "right")
+        bridge_texts = [
+            op
+            for op in post_join_ops
+            if op.get("action") == "text" and str((op.get("text") or {}).get("value", "")).startswith("Difference:")
+        ]
+        self.assertTrue(bridge_texts)
+        plain_connect_lines = [
+            op
+            for op in post_join_ops
+            if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect"
+        ]
+        self.assertEqual(len(plain_connect_lines), 0)
+
+    def test_split_selector_mode_supports_overlap_branch_and_bridge(self) -> None:
+        context = ChartContext(
+            fields=["country", "rating"],
+            dimension_fields=["country"],
+            measure_fields=["rating"],
+            primary_dimension="country",
+            primary_measure="rating",
+            categorical_values={
+                "country": ["AUT", "BEL", "JPN", "KOR", "USA"],
+            },
+            mark="bar",
+            is_stacked=False,
+        )
+        data_rows = [
+            {"country": "AUT", "rating": 48},
+            {"country": "BEL", "rating": 59},
+            {"country": "JPN", "rating": 42},
+            {"country": "KOR", "rating": 52},
+            {"country": "USA", "rating": 53},
+        ]
+        ops_spec = {
+            "ops": [
+                FilterOp(
+                    op="filter",
+                    id="n1",
+                    meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+                    field="country",
+                    include=["JPN", "KOR"],
+                ),
+                AverageOp(
+                    op="average",
+                    id="n2",
+                    meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+                    field="rating",
+                ),
+            ],
+            "ops2": [
+                FindExtremumOp(
+                    op="findExtremum",
+                    id="n3",
+                    meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+                    field="rating",
+                    which="max",
+                ),
+            ],
+            "ops3": [
+                DiffOp(
+                    op="diff",
+                    id="n4",
+                    meta=OpsMeta(nodeId="n4", inputs=["n2", "n3"], sentenceIndex=3),
+                    field="rating",
+                    targetA="ref:n2",
+                    targetB="ref:n3",
+                )
+            ],
+        }
+        scheduled = schedule_ops_spec(ops_spec)
+        draw_plan = build_draw_ops_spec(
+            ops_spec=scheduled,
+            chart_context=context,
+            data_rows=data_rows,
+            vega_lite_spec={"mark": "bar"},
+        )
+        ops_group = draw_plan.get("ops", [])
+        split_op = next(op for op in ops_group if op.get("action") == "split")
+        split_spec = split_op.get("split", {})
+        self.assertEqual(split_spec.get("mode"), "selector")
+        selectors = split_spec.get("selectors") or {}
+        self.assertEqual(selectors.get("left", {}).get("include"), ["JPN", "KOR"])
+        self.assertTrue(selectors.get("right", {}).get("all"))
+
+        bridge_ops = [
+            op
+            for op in draw_plan.get("ops3", [])
+            if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect-panel-scalar"
+        ]
+        self.assertEqual(len(bridge_ops), 1)
+
+    def test_sum_join_inserts_unsplit_before_sum_draw(self) -> None:
+        context = ChartContext(
+            fields=["Year", "rating"],
+            dimension_fields=["Year"],
+            measure_fields=["rating"],
+            primary_dimension="Year",
+            primary_measure="rating",
+            categorical_values={
+                "Year": ["1995", "1999", "2010", "2013", "2017"],
+            },
+            mark="bar",
+            is_stacked=False,
+        )
+        data_rows = [
+            {"Year": "1995", "rating": 10},
+            {"Year": "1999", "rating": 14},
+            {"Year": "2010", "rating": 20},
+            {"Year": "2013", "rating": 22},
+            {"Year": "2017", "rating": 26},
+        ]
+        ops_spec = {
+            "ops": [
+                FilterOp(
+                    op="filter",
+                    id="n1",
+                    meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+                    field="Year",
+                    include=["1995", "1999"],
+                ),
+                SumOp(
+                    op="sum",
+                    id="n2",
+                    meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+                    field="rating",
+                ),
+            ],
+            "ops2": [
+                FilterOp(
+                    op="filter",
+                    id="n3",
+                    meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+                    field="Year",
+                    include=["2010", "2013", "2017"],
+                ),
+                SumOp(
+                    op="sum",
+                    id="n4",
+                    meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+                    field="rating",
+                ),
+            ],
+            "ops3": [
+                SumOp(
+                    op="sum",
+                    id="n5",
+                    meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+                    field="rating",
+                ),
+            ],
+        }
+        scheduled = schedule_ops_spec(ops_spec)
+        draw_plan = build_draw_ops_spec(
+            ops_spec=scheduled,
+            chart_context=context,
+            data_rows=data_rows,
+            vega_lite_spec={"mark": "bar"},
+        )
+        ops3_group = draw_plan.get("ops3", [])
+        actions = [op.get("action") for op in ops3_group]
+        self.assertIn("unsplit", actions)
+        unsplit_index = actions.index("unsplit")
+        sum_index = actions.index("sum")
+        self.assertLess(unsplit_index, sum_index)
 
 
 if __name__ == "__main__":
