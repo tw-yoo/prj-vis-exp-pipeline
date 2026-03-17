@@ -10,7 +10,7 @@ from opsspec.specs.filter import FilterOp
 
 
 class SchedulerTest(unittest.TestCase):
-    def test_marks_two_way_fork_join_branches_with_split_metadata(self) -> None:
+    def test_assigns_phase_metadata_without_split_annotations(self) -> None:
         ops_spec = {
             "ops": [
                 FilterOp(op="filter", id="n1", meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1), field="Year", include=["1995", "1999"]),
@@ -38,18 +38,24 @@ class SchedulerTest(unittest.TestCase):
         join_node = scheduled["ops3"][0]
 
         for op in left_nodes:
-            self.assertEqual(op.meta.view.splitGroup, "sg_n5")
-            self.assertEqual(op.meta.view.panelId, "left")
-            self.assertEqual(op.meta.view.split, "horizontal")
+            self.assertIsNotNone(op.meta.view)
+            self.assertIsNone(op.meta.view.splitGroup)
+            self.assertIsNone(op.meta.view.panelId)
+            self.assertIsNone(op.meta.view.joinBarrier)
+            self.assertIsNotNone(op.meta.view.phase)
 
         for op in right_nodes:
-            self.assertEqual(op.meta.view.splitGroup, "sg_n5")
-            self.assertEqual(op.meta.view.panelId, "right")
-            self.assertEqual(op.meta.view.split, "horizontal")
+            self.assertIsNotNone(op.meta.view)
+            self.assertIsNone(op.meta.view.splitGroup)
+            self.assertIsNone(op.meta.view.panelId)
+            self.assertIsNone(op.meta.view.joinBarrier)
+            self.assertIsNotNone(op.meta.view.phase)
 
-        self.assertTrue(join_node.meta.view.joinBarrier)
-        self.assertEqual(join_node.meta.view.splitGroup, "sg_n5")
+        self.assertIsNotNone(join_node.meta.view)
+        self.assertIsNone(join_node.meta.view.joinBarrier)
+        self.assertIsNone(join_node.meta.view.splitGroup)
         self.assertIsNone(join_node.meta.view.panelId)
+        self.assertEqual(join_node.meta.view.phase, 3)
 
     def test_skips_split_when_branches_share_ancestor(self) -> None:
         ops_spec = {

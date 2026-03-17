@@ -36,7 +36,7 @@ class ExecutionPlanTest(unittest.TestCase):
             {"Year": "2017", "Installed base in million units": 26},
         ]
 
-    def test_builds_sentence_steps_and_keep_split_policy_for_diff_join(self) -> None:
+    def test_builds_sentence_steps_for_linear_diff_flow(self) -> None:
         ops_spec = {
             "ops": [
                 FilterOp(
@@ -91,14 +91,18 @@ class ExecutionPlanTest(unittest.TestCase):
         self.assertEqual(execution_plan.get("mode"), "sentence-step")
         steps = execution_plan.get("steps") or []
         self.assertEqual(len(steps), 3)
-        self.assertEqual(steps[0].get("splitLifecycle"), "enter")
-        self.assertEqual(steps[1].get("splitLifecycle"), "keep")
+        self.assertEqual(steps[0].get("sentenceIndex"), 1)
+        self.assertEqual(steps[0].get("groupNames"), ["ops"])
+        self.assertEqual(steps[0].get("drawGroupNames"), ["ops"])
+        self.assertIsNone(steps[0].get("splitLifecycle"))
         self.assertEqual(steps[2].get("sentenceIndex"), 3)
-        self.assertEqual(steps[2].get("joinOp"), "diff")
-        self.assertEqual(steps[2].get("joinPolicy"), "keep-split")
-        self.assertEqual(steps[2].get("splitLifecycle"), "keep")
+        self.assertEqual(steps[2].get("groupNames"), ["ops3"])
+        self.assertEqual(steps[2].get("drawGroupNames"), ["ops3"])
+        self.assertIsNone(steps[2].get("joinOp"))
+        self.assertIsNone(steps[2].get("joinPolicy"))
+        self.assertIsNone(steps[2].get("splitLifecycle"))
 
-    def test_defaults_to_merge_policy_for_sum_join(self) -> None:
+    def test_keeps_sentence_grouping_for_sum_flow_without_join_metadata(self) -> None:
         ops_spec = {
             "ops": [
                 FilterOp(
@@ -143,11 +147,13 @@ class ExecutionPlanTest(unittest.TestCase):
         execution_plan = build_sentence_execution_plan(ops_spec=scheduled, draw_plan_groups=None)
         steps = execution_plan.get("steps") or []
         self.assertEqual(len(steps), 3)
-        self.assertEqual(steps[0].get("splitLifecycle"), "enter")
-        self.assertEqual(steps[1].get("splitLifecycle"), "keep")
-        self.assertEqual(steps[2].get("joinOp"), "sum")
-        self.assertEqual(steps[2].get("joinPolicy"), "merge")
-        self.assertEqual(steps[2].get("splitLifecycle"), "merge")
+        self.assertEqual(steps[0].get("groupNames"), ["ops"])
+        self.assertEqual(steps[1].get("groupNames"), ["ops2"])
+        self.assertEqual(steps[2].get("groupNames"), ["ops3"])
+        self.assertIsNone(steps[0].get("splitLifecycle"))
+        self.assertIsNone(steps[1].get("splitLifecycle"))
+        self.assertIsNone(steps[2].get("joinOp"))
+        self.assertIsNone(steps[2].get("joinPolicy"))
 
 
 if __name__ == "__main__":

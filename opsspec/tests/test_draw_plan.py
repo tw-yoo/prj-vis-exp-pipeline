@@ -152,7 +152,7 @@ class DrawPlanTest(unittest.TestCase):
         connect_lines = [op for op in ops if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect"]
         self.assertTrue(len(connect_lines) >= 1)
 
-    def test_builds_split_plan_with_panel_scalar_bridge_for_fork_join_branches(self) -> None:
+    def test_builds_linear_scalar_panel_for_scalar_scalar_diff(self) -> None:
         context = ChartContext(
             fields=["Year", "Installed base in million units"],
             dimension_fields=["Year"],
@@ -227,49 +227,25 @@ class DrawPlanTest(unittest.TestCase):
         ops2_group = draw_plan.get("ops2", [])
         ops3_group = draw_plan.get("ops3", [])
 
-        self.assertTrue(any(op.get("action") == "split" for op in ops_group))
-        split_op = next(op for op in ops_group if op.get("action") == "split")
-        self.assertEqual(split_op.get("split", {}).get("orientation"), "horizontal")
-        self.assertEqual(split_op.get("split", {}).get("groups", {}).get("left"), ["1995", "1999"])
-        self.assertEqual(split_op.get("split", {}).get("groups", {}).get("right"), ["2010", "2013", "2017"])
-
-        scoped_ops = [op for op in ops_group if op.get("action") != "clear" and op.get("action") != "split"]
-        self.assertTrue(scoped_ops)
-        self.assertTrue(all(op.get("chartId") == "left" for op in scoped_ops))
-
-        scoped_ops2 = [op for op in ops2_group if op.get("action") != "clear"]
-        self.assertTrue(scoped_ops2)
-        self.assertTrue(all(op.get("chartId") == "right" for op in scoped_ops2))
-        self.assertFalse(any(op.get("action") == "clear" for op in ops2_group))
-
+        self.assertFalse(any(op.get("action") == "split" for op in ops_group))
+        self.assertFalse(any(op.get("action") == "split" for op in ops2_group))
         self.assertFalse(any(op.get("action") == "unsplit" for op in ops3_group))
-        self.assertFalse(any(op.get("action") == "clear" for op in ops3_group))
-        post_join_ops = [op for op in ops3_group if op.get("action") != "clear"]
-        self.assertTrue(post_join_ops)
-        self.assertTrue(all(op.get("chartId") is None for op in post_join_ops))
-        bridge_lines = [
-            op
-            for op in post_join_ops
-            if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect-panel-scalar"
-        ]
-        self.assertEqual(len(bridge_lines), 1)
-        bridge_spec = bridge_lines[0].get("line", {}).get("panelScalar", {})
-        self.assertEqual(bridge_spec.get("start", {}).get("chartId"), "left")
-        self.assertEqual(bridge_spec.get("end", {}).get("chartId"), "right")
-        bridge_texts = [
-            op
-            for op in post_join_ops
-            if op.get("action") == "text" and str((op.get("text") or {}).get("value", "")).startswith("Difference:")
-        ]
-        self.assertTrue(bridge_texts)
-        plain_connect_lines = [
-            op
-            for op in post_join_ops
-            if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect"
-        ]
-        self.assertEqual(len(plain_connect_lines), 0)
+        self.assertTrue(all(op.get("chartId") is None for op in ops_group if op.get("action") != "clear"))
+        self.assertTrue(all(op.get("chartId") is None for op in ops2_group))
+        scalar_panels = [op for op in ops3_group if op.get("action") == "scalar-panel"]
+        self.assertEqual(len(scalar_panels), 2)
+        self.assertEqual(scalar_panels[0].get("scalarPanel", {}).get("mode"), "base")
+        self.assertEqual(scalar_panels[1].get("scalarPanel", {}).get("mode"), "diff")
+        self.assertEqual(
+            scalar_panels[0].get("scalarPanel", {}).get("left", {}).get("value"),
+            12.0,
+        )
+        self.assertEqual(
+            scalar_panels[0].get("scalarPanel", {}).get("right", {}).get("value"),
+            22.666666666666668,
+        )
 
-    def test_split_selector_mode_supports_overlap_branch_and_bridge(self) -> None:
+    def test_builds_linear_connect_diff_without_split_bridge(self) -> None:
         context = ChartContext(
             fields=["country", "rating"],
             dimension_fields=["country"],
@@ -333,21 +309,23 @@ class DrawPlanTest(unittest.TestCase):
             vega_lite_spec={"mark": "bar"},
         )
         ops_group = draw_plan.get("ops", [])
-        split_op = next(op for op in ops_group if op.get("action") == "split")
-        split_spec = split_op.get("split", {})
-        self.assertEqual(split_spec.get("mode"), "selector")
-        selectors = split_spec.get("selectors") or {}
-        self.assertEqual(selectors.get("left", {}).get("include"), ["JPN", "KOR"])
-        self.assertTrue(selectors.get("right", {}).get("all"))
+        self.assertFalse(any(op.get("action") == "split" for op in ops_group))
+        self.assertTrue(any(op.get("action") == "highlight" for op in ops_group))
 
-        bridge_ops = [
-            op
-            for op in draw_plan.get("ops3", [])
-            if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect-panel-scalar"
+        diff_ops = draw_plan.get("ops3", [])
+        connect_ops = [
+            op for op in diff_ops if op.get("action") == "line" and op.get("line", {}).get("mode") == "connect"
         ]
-        self.assertEqual(len(bridge_ops), 1)
+        self.assertEqual(len(connect_ops), 1)
+        self.assertFalse(
+            any(op.get("action") == "line" and op.get("line", {}).get("mode") == "connect-panel-scalar" for op in diff_ops)
+        )
+        delta_texts = [
+            op for op in diff_ops if op.get("action") == "text" and str((op.get("text") or {}).get("value", "")).startswith("Δ")
+        ]
+        self.assertTrue(delta_texts)
 
-    def test_sum_join_inserts_unsplit_before_sum_draw(self) -> None:
+    def test_sum_join_runs_without_unsplit_step(self) -> None:
         context = ChartContext(
             fields=["Year", "rating"],
             dimension_fields=["Year"],
@@ -416,10 +394,9 @@ class DrawPlanTest(unittest.TestCase):
         )
         ops3_group = draw_plan.get("ops3", [])
         actions = [op.get("action") for op in ops3_group]
-        self.assertIn("unsplit", actions)
-        unsplit_index = actions.index("unsplit")
-        sum_index = actions.index("sum")
-        self.assertLess(unsplit_index, sum_index)
+        self.assertNotIn("split", actions)
+        self.assertNotIn("unsplit", actions)
+        self.assertEqual(actions, ["sum", "text"])
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ from nlp_engine import NLPEngine
 from draw_plan import build_draw_ops_spec, export_draw_plan_to_public, validate_draw_groups_payload
 from opsspec.runtime.scheduler import schedule_ops_spec
 from opsspec.runtime.execution_plan import build_sentence_execution_plan
+from opsspec.runtime.visual_execution_plan import build_visual_execution_plan
 from opsspec.modules.pipeline import OpsSpecPipeline
 from opsspec.modules.answer_pipeline import (
     ChartAnswerPipeline,
@@ -203,7 +204,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-default_origins = "http://localhost:5173,http://127.0.0.1:5173"
+default_origins = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174"
 cors_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ALLOW_ORIGINS", default_origins).split(",")
@@ -458,10 +459,12 @@ async def generate_grammar(request: GenerateGrammarRequest):
             ops_spec=result.ops_spec,
             draw_plan_groups=draw_plan_dump,
         )
+        visual_execution_plan_dump = build_visual_execution_plan(ops_spec=result.ops_spec)
 
         response_payload: Dict[str, Any] = dict(groups_dump)
         response_payload["draw_plan"] = draw_plan_dump
         response_payload["execution_plan"] = execution_plan_dump
+        response_payload["visual_execution_plan"] = visual_execution_plan_dump
         return prune_nulls(response_payload)
     except RuntimeError as exc:
         elapsed_ms = (time.perf_counter() - started_at) * 1000
@@ -556,6 +559,7 @@ async def compile_ops_plan(request: CompileOpsPlanRequest):
             ops_spec=scheduled_groups,
             draw_plan_groups=draw_plan_dump,
         )
+        visual_execution_plan_dump = build_visual_execution_plan(ops_spec=scheduled_groups)
         ops_dump = {
             group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
             for group_name, ops in scheduled_groups.items()
@@ -577,6 +581,7 @@ async def compile_ops_plan(request: CompileOpsPlanRequest):
             ops_spec=ops_dump,
             draw_plan=draw_plan_dump,
             execution_plan=execution_plan_dump,
+            visual_execution_plan=visual_execution_plan_dump,
             warnings=warnings,
         )
         return prune_nulls(payload.model_dump())

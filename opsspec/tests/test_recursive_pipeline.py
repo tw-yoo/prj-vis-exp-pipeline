@@ -1038,7 +1038,7 @@ class RecursivePipelineTest(unittest.TestCase):
                     debug=False,
                 )
 
-    def test_pipeline_assigns_fork_join_split_metadata_and_validates_draw_plan(self) -> None:
+    def test_pipeline_keeps_linear_phase_metadata_and_validates_draw_plan(self) -> None:
         simple_context = ChartContext(
             fields=["Year", "Installed base in million units"],
             dimension_fields=["Year"],
@@ -1135,11 +1135,12 @@ class RecursivePipelineTest(unittest.TestCase):
         right_branch = result.ops_spec["ops2"]
         join_op = result.ops_spec["ops3"][0]
 
-        self.assertEqual(left_branch[0].meta.view.splitGroup, "sg_n5")
-        self.assertEqual(left_branch[0].meta.view.panelId, "left")
-        self.assertEqual(left_branch[1].meta.view.panelId, "left")
-        self.assertEqual(right_branch[0].meta.view.splitGroup, "sg_n5")
-        self.assertEqual(right_branch[0].meta.view.panelId, "right")
-        self.assertEqual(right_branch[1].meta.view.panelId, "right")
-        self.assertTrue(join_op.meta.view.joinBarrier)
+        self.assertEqual(left_branch[0].meta.view.phase, 1)
+        self.assertEqual(left_branch[1].meta.view.phase, 2)
+        self.assertEqual(right_branch[0].meta.view.phase, 1)
+        self.assertEqual(right_branch[1].meta.view.phase, 2)
+        self.assertEqual(join_op.meta.view.phase, 3)
+        self.assertIsNone(left_branch[0].meta.view.splitGroup)
+        self.assertIsNone(right_branch[0].meta.view.panelId)
+        self.assertFalse(bool(join_op.meta.view.joinBarrier))
         self.assertFalse(any("draw plan validate failed" in warning for warning in result.warnings))

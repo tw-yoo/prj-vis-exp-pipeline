@@ -150,6 +150,7 @@ class GenerateGrammarResponse(BaseModel):
     chart_context: OpsChartContext
     warnings: list[str] = Field(default_factory=list)
     trace: RecursivePipelineTrace | None = None
+    visual_execution_plan: dict = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -204,6 +205,7 @@ class CompileOpsPlanResponse(BaseModel):
     ops_spec: dict[str, list[dict]] = Field(default_factory=dict)
     draw_plan: dict[str, list[dict]] = Field(default_factory=dict)
     execution_plan: ExecutionPlan = Field(default_factory=ExecutionPlan)
+    visual_execution_plan: dict = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
