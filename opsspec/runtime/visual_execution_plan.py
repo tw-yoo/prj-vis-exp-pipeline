@@ -6,6 +6,7 @@ from .artifacts import extract_scalar_ref_deps
 from ..specs.union import OperationSpec
 
 NodeResultKind = Literal["source-backed", "source-aggregate", "synthetic-result"]
+SurfaceBranchRole = Literal["left", "right", "merged"]
 
 
 def _group_to_sentence_index(group_name: str) -> int:
@@ -106,6 +107,203 @@ def _selector_has_ref(value: Any) -> bool:
         )
         return _selector_has_ref(category) or selector_ref
     return False
+
+
+def _index_nodes(ops_spec: Dict[str, List[OperationSpec]]) -> Dict[str, OperationSpec]:
+    node_map: Dict[str, OperationSpec] = {}
+    for ops in ops_spec.values():
+        for op in ops:
+            node_map[_op_node_id(op)] = op
+    return node_map
+
+
+def _collect_edges(ops_spec: Dict[str, List[OperationSpec]]) -> Dict[str, Set[str]]:
+    edges: Dict[str, Set[str]] = {}
+    for ops in ops_spec.values():
+        for op in ops:
+            edges[_op_node_id(op)] = set(_direct_input_ids(op))
+    return edges
+
+
+def _ancestor_closure(
+    node_id: str,
+    *,
+    edges: Dict[str, Set[str]],
+    cache: Dict[str, Set[str]],
+) -> Set[str]:
+    cached = cache.get(node_id)
+    if cached is not None:
+        return set(cached)
+    out: Set[str] = set()
+    for parent in edges.get(node_id, set()):
+        out.add(parent)
+        out.update(_ancestor_closure(parent, edges=edges, cache=cache))
+    cache[node_id] = set(out)
+    return out
+
+
+def _node_sentence_index(op: OperationSpec) -> int:
+    meta = op.meta if op else None
+    sentence_index = getattr(meta, "sentenceIndex", None) if meta else None
+    if isinstance(sentence_index, int) and sentence_index >= 1:
+        return int(sentence_index)
+    return 1
+
+
+def _branch_roots(nodes: Set[str], *, edges: Dict[str, Set[str]]) -> List[str]:
+    roots = [
+        node_id
+        for node_id in sorted(nodes, key=_node_sort_key)
+        if not (edges.get(node_id, set()) & nodes)
+    ]
+    return roots
+
+
+def _infer_selector_values_from_op(op: OperationSpec) -> List[str]:
+    include = getattr(op, "include", None)
+    if isinstance(include, list) and include:
+        return [str(value) for value in include if value is not None]
+
+    target = getattr(op, "target", None)
+    if target is not None:
+        if isinstance(target, list):
+            return [
+                str(value)
+                for value in target
+                if value is not None and not str(value).startswith("ref:")
+            ]
+        if isinstance(target, (str, int, float)) and not str(target).startswith("ref:"):
+            return [str(target)]
+
+    group = getattr(op, "group", None)
+    if isinstance(group, str) and group:
+        return [group]
+    if isinstance(group, list):
+        return [str(value) for value in group if value is not None]
+    return []
+
+
+def _infer_panel_selector_from_op(op: OperationSpec) -> Dict[str, Any]:
+    include = getattr(op, "include", None)
+    exclude = getattr(op, "exclude", None)
+    if isinstance(include, list) and include:
+        return {"include": [str(value) for value in include if value is not None]}
+    if isinstance(exclude, list) and exclude:
+        return {"exclude": [str(value) for value in exclude if value is not None]}
+    selector_values = _infer_selector_values_from_op(op)
+    if selector_values:
+        return {"include": selector_values}
+    return {"all": True}
+
+
+def _is_include_selector(selector: Dict[str, Any] | None) -> bool:
+    if not selector:
+        return False
+    include = selector.get("include")
+    if not isinstance(include, list) or not include:
+        return False
+    return not selector.get("exclude") and selector.get("all") is not True
+
+
+def _infer_surface_split_plans(ops_spec: Dict[str, List[OperationSpec]]) -> List[Dict[str, Any]]:
+    node_map = _index_nodes(ops_spec)
+    edges = _collect_edges(ops_spec)
+    ancestor_cache: Dict[str, Set[str]] = {}
+    claimed_nodes: Set[str] = set()
+    plans: List[Dict[str, Any]] = []
+
+    ordered_node_ids = sorted(node_map.keys(), key=_node_sort_key)
+    for join_node_id in ordered_node_ids:
+        op = node_map[join_node_id]
+        inputs = _direct_input_ids(op)
+        if len(inputs) != 2:
+            continue
+
+        left_input, right_input = sorted(inputs, key=_node_sort_key)
+        left_closure = _ancestor_closure(left_input, edges=edges, cache=ancestor_cache) | {left_input}
+        right_closure = _ancestor_closure(right_input, edges=edges, cache=ancestor_cache) | {right_input}
+        common = left_closure & right_closure
+        left_nodes = left_closure - common
+        right_nodes = right_closure - common
+        exclusive_nodes = left_nodes | right_nodes
+        if not left_nodes or not right_nodes or not exclusive_nodes:
+            continue
+        if len(left_nodes) < 2 and len(right_nodes) < 2:
+            continue
+        if claimed_nodes & exclusive_nodes:
+            continue
+
+        left_roots = _branch_roots(left_nodes, edges=edges)
+        right_roots = _branch_roots(right_nodes, edges=edges)
+        if len(left_roots) != 1 or len(right_roots) != 1:
+            continue
+
+        left_root_op = node_map.get(left_roots[0])
+        right_root_op = node_map.get(right_roots[0])
+        if left_root_op is None or right_root_op is None:
+            continue
+
+        left_selector = _infer_panel_selector_from_op(left_root_op)
+        right_selector = _infer_panel_selector_from_op(right_root_op)
+        if not left_selector or not right_selector:
+            continue
+
+        domain_mode = (
+            _is_include_selector(left_selector)
+            and _is_include_selector(right_selector)
+            and not (set(left_selector.get("include", [])) & set(right_selector.get("include", [])))
+        )
+        split_spec: Dict[str, Any]
+        if domain_mode:
+            split_spec = {
+                "mode": "domain",
+                "by": "x",
+                "groups": {
+                    "left": [str(v) for v in list(left_selector.get("include", []))],
+                    "right": [str(v) for v in list(right_selector.get("include", []))],
+                },
+                "orientation": "horizontal",
+            }
+        else:
+            split_spec = {
+                "mode": "selector",
+                "by": "x",
+                "selectors": {
+                    "left": left_selector,
+                    "right": right_selector,
+                },
+                "orientation": "horizontal",
+            }
+
+        split_sentence = min(
+            [_node_sentence_index(node_map[node_id]) for node_id in exclusive_nodes if node_id in node_map] or [1]
+        )
+        merge_sentence = _node_sentence_index(op)
+        surface_ids = {
+            "left": f"{join_node_id}_left",
+            "right": f"{join_node_id}_right",
+        }
+        node_surfaces: Dict[str, SurfaceBranchRole] = {}
+        for node_id in left_nodes:
+            node_surfaces[node_id] = "left"
+        for node_id in right_nodes:
+            node_surfaces[node_id] = "right"
+
+        plans.append(
+            {
+                "splitGroup": f"sg_{join_node_id}",
+                "joinNodeId": join_node_id,
+                "splitSentenceIndex": split_sentence,
+                "mergeSentenceIndex": merge_sentence,
+                "splitSpec": split_spec,
+                "layoutMode": "split-horizontal",
+                "surfaceIds": surface_ids,
+                "nodeSurfaces": node_surfaces,
+            }
+        )
+        claimed_nodes.update(exclusive_nodes)
+
+    return plans
 
 
 def _classify_node_result_kind(
@@ -268,7 +466,11 @@ def _materialization_template(op: OperationSpec, *, node_kinds: Dict[str, NodeRe
 
 
 def _materialize_surface_substep(
-    op: OperationSpec, *, group_name: str, node_kinds: Dict[str, NodeResultKind]
+    op: OperationSpec,
+    *,
+    group_name: str,
+    node_kinds: Dict[str, NodeResultKind],
+    surface_assignment: Dict[str, Any] | None = None,
 ) -> Dict[str, Any] | None:
     template = _materialization_template(op, node_kinds=node_kinds)
     if template is None:
@@ -291,12 +493,17 @@ def _materialize_surface_substep(
             "sourceNodeIds": source_node_ids,
             "syntheticLabels": "semantic",
             "layout": "full-canvas",
+            **(surface_assignment or {}),
         },
     }
 
 
 def _run_op_substep(
-    op: OperationSpec, *, group_name: str, node_kinds: Dict[str, NodeResultKind]
+    op: OperationSpec,
+    *,
+    group_name: str,
+    node_kinds: Dict[str, NodeResultKind],
+    surface_assignment: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     node_id = _op_node_id(op)
     input_ids = _direct_input_ids(op)
@@ -316,35 +523,133 @@ def _run_op_substep(
             "surfaceType": "derived-chart" if template else "source-chart",
             "templateType": template or "source-chart",
             "keepOnComplete": True,
+            **(surface_assignment or {}),
         },
     }
+
+
+def _surface_branch_rank(surface_assignment: Dict[str, Any] | None, *, is_join_node: bool) -> int:
+    if is_join_node:
+        return 2
+    branch_role = surface_assignment.get("branchRole") if surface_assignment else None
+    if branch_role == "left":
+        return 0
+    if branch_role == "right":
+        return 1
+    return 2
 
 
 def build_visual_execution_plan(*, ops_spec: Dict[str, List[OperationSpec]]) -> Dict[str, Any]:
     sentence_to_groups = _collect_sentence_groups(ops_spec)
     node_kinds = _build_node_kind_map(ops_spec)
+    split_plans = _infer_surface_split_plans(ops_spec)
+    node_surface_assignments: Dict[str, Dict[str, Any]] = {}
+    split_starts_by_sentence: Dict[int, List[Dict[str, Any]]] = {}
+    merges_by_node_id: Dict[str, Dict[str, Any]] = {}
+
+    for plan in split_plans:
+        left_surface_id = str(plan["surfaceIds"]["left"])
+        right_surface_id = str(plan["surfaceIds"]["right"])
+        for node_id, branch_role in plan["nodeSurfaces"].items():
+            surface_id = left_surface_id if branch_role == "left" else right_surface_id
+            node_surface_assignments[node_id] = {
+                "surfaceId": surface_id,
+                "parentSurfaceId": "root",
+                "surfaceAction": "run",
+                "layoutMode": plan["layoutMode"],
+                "branchRole": branch_role,
+            }
+        split_starts_by_sentence.setdefault(int(plan["splitSentenceIndex"]), []).append(plan)
+        merges_by_node_id[str(plan["joinNodeId"])] = plan
+
     steps: List[Dict[str, Any]] = []
 
     for sentence_index in sorted(sentence_to_groups.keys()):
         group_names = sentence_to_groups.get(sentence_index, [])
         substeps: List[Dict[str, Any]] = []
 
+        for plan in split_starts_by_sentence.get(int(sentence_index), []):
+            substeps.append(
+                {
+                    "id": f"{plan['splitGroup']}_split",
+                    "kind": "surface-action",
+                    "groupName": group_names[0] if group_names else "ops",
+                    "nodeId": str(plan["joinNodeId"]),
+                    "opName": "split",
+                    "label": "split surfaces",
+                    "visible": True,
+                    "surface": {
+                        "surfaceType": "source-chart",
+                        "surfaceId": "root",
+                        "parentSurfaceId": "root",
+                        "surfaceAction": "split",
+                        "layoutMode": plan["layoutMode"],
+                        "branchSurfaceIds": plan["surfaceIds"],
+                        "mergeTargetSurfaceId": "root",
+                        "splitSpec": plan["splitSpec"],
+                    },
+                }
+            )
+
+        group_order = {name: index for index, name in enumerate(group_names)}
         ordered_ops: List[tuple[str, OperationSpec]] = []
         for group_name in group_names:
             for op in ops_spec.get(group_name, []):
                 ordered_ops.append((group_name, op))
-        ordered_ops.sort(key=lambda item: _node_sort_key(_op_node_id(item[1])))
+        ordered_ops.sort(
+            key=lambda item: (
+                _surface_branch_rank(
+                    node_surface_assignments.get(_op_node_id(item[1])),
+                    is_join_node=_op_node_id(item[1]) in merges_by_node_id,
+                ),
+                group_order.get(item[0], 10**6),
+                _node_sort_key(_op_node_id(item[1])),
+            )
+        )
 
         for group_name, op in ordered_ops:
+            node_id = _op_node_id(op)
+            surface_assignment = node_surface_assignments.get(node_id)
+            split_plan_for_join = merges_by_node_id.get(node_id)
+            if split_plan_for_join is not None:
+                substeps.append(
+                    {
+                        "id": f"{split_plan_for_join['splitGroup']}_merge",
+                        "kind": "surface-action",
+                        "groupName": group_name,
+                        "nodeId": node_id,
+                        "opName": "merge",
+                        "label": "merge surfaces",
+                        "visible": True,
+                        "surface": {
+                            "surfaceType": "source-chart",
+                            "surfaceId": "root",
+                            "parentSurfaceId": "root",
+                            "surfaceAction": "merge",
+                            "branchSurfaceIds": split_plan_for_join["surfaceIds"],
+                            "mergeTargetSurfaceId": "root",
+                            "layoutMode": "single",
+                            "branchRole": "merged",
+                        },
+                    }
+                )
             substeps.extend(_prefilter_substeps(op, group_name=group_name))
             materialize = _materialize_surface_substep(
                 op,
                 group_name=group_name,
                 node_kinds=node_kinds,
+                surface_assignment=surface_assignment,
             )
             if materialize is not None:
                 substeps.append(materialize)
-            substeps.append(_run_op_substep(op, group_name=group_name, node_kinds=node_kinds))
+            substeps.append(
+                _run_op_substep(
+                    op,
+                    group_name=group_name,
+                    node_kinds=node_kinds,
+                    surface_assignment=surface_assignment,
+                )
+            )
 
         steps.append(
             {

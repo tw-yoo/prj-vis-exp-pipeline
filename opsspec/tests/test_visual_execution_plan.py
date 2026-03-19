@@ -227,6 +227,73 @@ class VisualExecutionPlanTest(unittest.TestCase):
         self.assertEqual(substeps[1].get("surface", {}).get("templateType"), "mixed-operands-chart")
         self.assertEqual(substeps[2].get("surface", {}).get("surfaceType"), "derived-chart")
 
+    def test_emits_split_surface_graph_for_two_branch_join(self) -> None:
+        ops_spec = {
+            "ops": [
+                FilterOp(
+                    op="filter",
+                    id="n1",
+                    meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+                    field="Year",
+                    include=["1995", "1999"],
+                ),
+                AverageOp(
+                    op="average",
+                    id="n2",
+                    meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+                    field="Installed base in million units",
+                ),
+            ],
+            "ops2": [
+                FilterOp(
+                    op="filter",
+                    id="n3",
+                    meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+                    field="Year",
+                    include=["2010", "2013", "2017"],
+                ),
+                AverageOp(
+                    op="average",
+                    id="n4",
+                    meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+                    field="Installed base in million units",
+                ),
+            ],
+            "ops3": [
+                DiffOp(
+                    op="diff",
+                    id="n5",
+                    meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+                    field="Installed base in million units",
+                    targetA="ref:n2",
+                    targetB="ref:n4",
+                )
+            ],
+        }
+
+        plan = build_visual_execution_plan(ops_spec=schedule_ops_spec(ops_spec))
+        steps = plan.get("steps") or []
+
+        self.assertEqual(len(steps), 3)
+        step1_substeps = steps[0].get("substeps") or []
+        self.assertEqual(step1_substeps[0].get("kind"), "surface-action")
+        self.assertEqual(step1_substeps[0].get("surface", {}).get("surfaceAction"), "split")
+        self.assertEqual(step1_substeps[0].get("surface", {}).get("layoutMode"), "split-horizontal")
+        self.assertEqual(step1_substeps[0].get("surface", {}).get("splitSpec", {}).get("mode"), "domain")
+        self.assertEqual(
+            step1_substeps[-1].get("surface", {}).get("surfaceId"),
+            "n5_left",
+        )
+
+        step2_substeps = steps[1].get("substeps") or []
+        self.assertEqual(step2_substeps[-1].get("surface", {}).get("surfaceId"), "n5_right")
+
+        step3_substeps = steps[2].get("substeps") or []
+        self.assertEqual(step3_substeps[0].get("kind"), "surface-action")
+        self.assertEqual(step3_substeps[0].get("surface", {}).get("surfaceAction"), "merge")
+        self.assertEqual(step3_substeps[1].get("kind"), "materialize-surface")
+        self.assertEqual(step3_substeps[2].get("kind"), "run-op")
+
 
 if __name__ == "__main__":
     unittest.main()
