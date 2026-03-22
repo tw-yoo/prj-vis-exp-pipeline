@@ -109,16 +109,21 @@ Rules:
   - In membership mode, paramsHint.field may be any categorical field (except series_field).
   - If the explanation only says "filter only A and B" and A/B are series values (from series_domain),
     do NOT create a group-only filter task; attach the series restriction to other substantive tasks via paramsHint.group.
-- TOP/BOTTOM N RULE: When the explanation says "top N", "highest N", "lowest N", "bottom N" values by measure field:
-  1. Look at rows_preview to read the actual (category, measure) pairs.
-  2. Sort them mentally by the measure field (desc for top/highest, asc for bottom/lowest).
-  3. Extract the N category values (dimension field values).
-  4. Use op="filter" with paramsHint.include=[<specific_N_values>].
-  - Do NOT use sort + nth for this case. Always resolve to specific values from rows_preview.
-  - Example:
-    rows_preview shows: {Year:"2018", prod:100}, {Year:"2019", prod:95}, {Year:"2017", prod:80} ...
+- DATA RESOLUTION RULE: When a task requires selecting a specific subset of data items
+  (e.g., "top N", "highest N", "lowest N", "bottom N", "most recent N", "largest N",
+  "smallest N", or any phrase asking to pick N specific items by value ranking):
+  1. Check if you can determine the actual values from rows_preview.
+  2. If YES: use op="filter" with paramsHint.include=[<specific_values_from_rows_preview>].
+     - Read rows_preview, sort mentally by the relevant measure field,
+       and extract the N dimension values directly.
+  3. If NO (e.g., the subset depends on an intermediate computed result not yet available):
+     - Fall back to dynamic ops (sort, nth, findExtremum).
+  Principle: rows_preview is provided so you can resolve data-dependent selections AT INVENTORY TIME.
+  Always prefer resolving to concrete values over deferring to runtime sorting.
+  Example:
+    rows_preview: [{Year:"2018", prod:100}, {Year:"2019", prod:95}, {Year:"2017", prod:80}, ...]
     explanation: "find the top 2 years by production"
-    → filter(field="Year", include=["2018", "2019"])  ← hardcoded from rows_preview
+    → filter(field="Year", include=["2018", "2019"])  ← resolved from rows_preview
     NOT: sort(desc) + nth(1,2)
 - LAST SENTENCE RULE: The tasks in the LAST sentence of the explanation must collectively
   produce the final answer to the QUESTION.
