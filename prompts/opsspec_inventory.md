@@ -40,8 +40,12 @@ Output schema:
 }
 
 Rules:
-- Only extract operations that are actually mentioned or clearly implied by the explanation.
+- Only extract operations that are explicitly mentioned in the explanation.
   - Do NOT invent extra steps just because an op exists in allowed_ops.
+  - Do NOT add operations that are logically implied but not stated —
+    Step-Compose handles intermediate steps at compose-time.
+  - "clearly implied" means: the sentence directly describes the action or result for this op.
+    It does NOT mean: "this op will eventually be needed to reach the final answer."
 - First infer the intended final result artifact from the explanation/question:
   - scalar (single number), boolean, single target(row 1), list/table(rows 2+), or set-like list.
   - Inventory must be consistent with ONE primary final artifact type.
@@ -70,7 +74,13 @@ Rules:
 - Build tasks as a minimal executable plan:
   - include prerequisite steps (filter/aggregate/compare) needed to derive the final intended artifact.
   - avoid redundant branches that do not contribute to the final artifact.
-- sentenceIndex MUST be the 1-based index of the explanation sentence that mentions the task.
+- sentenceIndex MUST be the 1-based index of the sentence that explicitly names or describes this task's action.
+  - Assign a task to the sentence whose verb/action directly corresponds to this op
+    (e.g., "retrieve" → retrieveValue, "difference" → diff, "filter" → filter).
+  - Do NOT assign a task to a sentence just because it provides input data for the task.
+  - The fact that sentence 1 produces values that a later op will consume
+    does NOT mean that later op belongs in sentenceIndex=1.
+    If an op is only mentioned in sentence 3, it gets sentenceIndex=3.
 - paramsHint must be FLAT (no nested objects). Keep it minimal.
 - Role tokens allowed in paramsHint values:
   - "@primary_dimension", "@primary_measure", "@series_field"
