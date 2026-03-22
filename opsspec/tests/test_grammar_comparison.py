@@ -1,7 +1,9 @@
 """test_grammar.py 정답 spec과 /generate_grammar 출력 비교 테스트."""
 from __future__ import annotations
 
+import os
 import uuid
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -17,6 +19,20 @@ from opsspec.tests.comparators import (
 # ────────────────────────────────────────────────────────────────────────────
 # 모든 spec_ 변수 수집
 # ────────────────────────────────────────────────────────────────────────────
+
+# ────────────────────────────────────────────────────────────────────────────
+# LLM 설정 (코드로 직접 지정)
+# ────────────────────────────────────────────────────────────────────────────
+
+LLM_BACKEND   = "ollama"                   # "openai" | "ollama"
+OLLAMA_MODEL  = "qwen2.5-coder:1.5b"       # ollama 사용 시 모델명
+OPENAI_MODEL  = "gpt-4o-mini"              # openai 사용 시 모델명
+OLLAMA_BASE_URL = "http://localhost:11434/v1"
+OLLAMA_API_KEY  = "ollama"
+
+os.environ["LLM_BACKEND"] = LLM_BACKEND
+os.environ["OLLAMA_MODEL"] = OLLAMA_MODEL
+os.environ["OPENAI_MODEL"] = OPENAI_MODEL
 
 ALL_SPECS: dict[str, dict] = {
     name: val
@@ -44,7 +60,12 @@ def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
     # pipeline 직접 호출 (HTTP 서버 불필요)
     from opsspec.modules.pipeline import OpsSpecPipeline
 
-    pipeline = OpsSpecPipeline()
+    pipeline = OpsSpecPipeline(
+        ollama_model=OLLAMA_MODEL,
+        ollama_base_url=OLLAMA_BASE_URL,
+        ollama_api_key=OLLAMA_API_KEY,
+        prompts_dir=Path(__file__).parent.parent.parent / "prompts",
+    )
     result = pipeline.generate(
         question=scenario["question"],
         explanation=scenario["explanation"],
