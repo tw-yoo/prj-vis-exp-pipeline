@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import copy
+import csv
 import importlib.util
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -247,30 +249,38 @@ def compare_spec_groups(
     )
 
 
-def load_scenario(chart_id: str) -> Optional[Dict[str, Any]]:
-    """data/expert/ 하위에서 {chart_id}.py를 찾아 REQUEST dict를 반환한다.
+def load_chartqa_case(chart_id: str) -> tuple[dict, list[dict]]:
+    """chart_id로 ChartQA 폴더에서 vega-lite spec + data rows를 로드한다.
 
-    여러 서브디렉토리가 있으면 가장 처음 발견된 파일을 반환한다.
-    파일이 없으면 None을 반환한다.
+    탐색 경로:
+      - vega-lite spec: ChartQA/data/vlSpec/**/{chart_id}.json
+      - data rows:      ChartQA/data/csv/**/{chart_id}.csv
+
+    Returns:
+        (vega_lite_spec, data_rows)
+
+    Raises:
+        FileNotFoundError: 파일이 없을 때
     """
-    # nlp_server 루트 기준으로 data/expert/ 탐색
-    root = Path(__file__).parent.parent.parent
-    expert_dir = root / "data" / "expert"
+    root = Path(__file__).parent.parent.parent.parent  # prj-vis-exp/prj-vis-exp 루트
+    vl = list((root / "ChartQA" / "data" / "vlSpec").glob(f"**/{chart_id}.json"))
+    csv_files = list((root / "ChartQA" / "data" / "csv").glob(f"**/{chart_id}.csv"))
+    if not vl or not csv_files:
+        raise FileNotFoundError(f"ChartQA 파일 없음: chart_id={chart_id}")
+    vega_lite_spec = json.loads(vl[0].read_text(encoding="utf-8"))
+    with csv_files[0].open("r", encoding="utf-8", newline="") as f:
+        data_rows = list(csv.DictReader(f))
+    return vega_lite_spec, data_rows
 
-    if not expert_dir.exists():
-        return None
 
-    for py_file in sorted(expert_dir.rglob(f"{chart_id}.py")):
-        spec = importlib.util.spec_from_file_location(f"_scenario_{chart_id}", py_file)
-        if spec is None or spec.loader is None:
-            continue
-        module = importlib.util.module_from_spec(spec)
-        try:
-            spec.loader.exec_module(module)  # type: ignore[arg-type]
-        except Exception:
-            continue
-        request = getattr(module, "REQUEST", None)
-        if isinstance(request, dict):
-            return request
+def load_test_inputs() -> list[dict[str, str]]:
+    """test_inputs.csv에서 입력 데이터를 로드한다.
 
-    return None
+    컬럼: chart_id, question, explanation
+    파일이 없으면 빈 리스트를 반환한다.
+    """
+    csv_path = Path(__file__).parent / "test_inputs.csv"
+    if not csv_path.exists():
+        return []
+    with csv_path.open(newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))

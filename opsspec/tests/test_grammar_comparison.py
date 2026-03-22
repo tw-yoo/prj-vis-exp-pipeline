@@ -15,7 +15,8 @@ from opsspec.tests import test_grammar
 from opsspec.tests.comparators import (
     SpecCompareResult,
     compare_spec_groups,
-    load_scenario,
+    load_chartqa_case,
+    load_test_inputs,
     serialize_spec_dict,
 )
 
@@ -82,6 +83,16 @@ def _get_model_name(pipeline: Any) -> str:
 
 
 # ────────────────────────────────────────────────────────────────────────────
+# 입력 데이터 로드 (test_inputs.csv)
+# ────────────────────────────────────────────────────────────────────────────
+
+# {chart_id: {"chart_id": ..., "question": ..., "explanation": ...}}
+INPUTS_BY_ID: dict[str, dict] = {
+    row["chart_id"]: row
+    for row in load_test_inputs()
+}
+
+# ────────────────────────────────────────────────────────────────────────────
 # 모든 spec_ 변수 수집
 # ────────────────────────────────────────────────────────────────────────────
 
@@ -100,14 +111,22 @@ ALL_SPECS: dict[str, dict] = {
 def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
     """pipeline 출력이 ground truth spec과 일치하는지 검증한다.
 
-    scenario 파일(data/expert/.../{chart_id}.py)이 없으면 skip.
+    test_inputs.csv에 chart_id가 없으면 skip.
+    ChartQA 파일이 없으면 skip.
     이미 동일한 (spec_id, backend, model, gt_spec) 조합이 CSV에 있으면 skip.
     """
     chart_id = spec_name.removeprefix("spec_")
-    scenario = load_scenario(chart_id)
 
-    if scenario is None:
-        pytest.skip(f"scenario 파일 없음: chart_id={chart_id}")
+    # test_inputs.csv에서 question/explanation 조회
+    if chart_id not in INPUTS_BY_ID:
+        pytest.skip(f"test_inputs.csv에 chart_id={chart_id} 없음")
+    inp = INPUTS_BY_ID[chart_id]
+
+    # ChartQA에서 vega-lite spec + data rows 로드
+    try:
+        vega_lite_spec, data_rows = load_chartqa_case(chart_id)
+    except FileNotFoundError as e:
+        pytest.skip(str(e))
 
     # pipeline 초기화 (LLM 호출 없음 — backend/model 정보만 추출)
     from opsspec.modules.pipeline import OpsSpecPipeline
@@ -132,10 +151,10 @@ def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
 
     # pipeline 실행
     result = pipeline.generate(
-        question=scenario["question"],
-        explanation=scenario["explanation"],
-        vega_lite_spec=scenario["vega_lite_spec"],
-        data_rows=scenario["data_rows"],
+        question=inp["question"],
+        explanation=inp["explanation"],
+        vega_lite_spec=vega_lite_spec,
+        data_rows=data_rows,
         request_id=f"test_{chart_id}_{uuid.uuid4().hex[:8]}",
         debug=True,
     )
