@@ -74,6 +74,10 @@ Critical rules:
    - For op="findExtremum", use rank for k-th extremum (e.g., second highest -> which="max", rank=2).
    - For op="compareBool", you MUST include operator (e.g., ">", "<=", "==").
    - For op="add", you MUST include targetA and targetB (each should be scalar ref like "ref:nX" or numeric literal).
+   - For op="diff": MUST include targetA and targetB (both must be scalar refs "ref:nX").
+     inputs MUST contain exactly 2 nodeIds matching the referenced nodes.
+   - For op="compare": MUST include targetA, targetB (scalar refs "ref:nX"), and which ("min" or "max").
+     inputs MUST contain exactly 2 nodeIds.
    - For op="nth", you MUST include n (integer or list of integers). (n is required.)
    - For op="setOp", you MUST include fn ("intersection" or "union") AND inputs with at least two nodeIds.
    - For op="pairDiff", you MUST include by, groupA, and groupB.
@@ -87,6 +91,16 @@ Critical rules:
      - row aggregation: sum/average/count
      - scalar arithmetic: add/scale/diff (scalar-ref mode)
      - row selection/ranking: filter/sort/nth/findExtremum
+9) QUESTION-DRIVEN INPUT SELECTION:
+   When multiple available nodes could serve as inputs or scalar refs, resolve ambiguity by reading the QUESTION:
+   - Ask: "What semantic role does the current step play in answering the question?"
+   - Choose inputs/refs that match that semantic role, NOT simply the most recently computed node.
+   Example:
+     Available: n2=avg_top3, n4=avg_bottom3
+     Task: "scale" (double the lowest average)
+     Question mentions "lowest three" → target should be "ref:n4" (avg_bottom3), not n2.
+   When the explanation sentence is ambiguous (e.g., "double the X" without naming X explicitly),
+   derive X from the QUESTION before selecting the ref.
 
 Mini pattern (subset average via inputs):
 - Wrong:

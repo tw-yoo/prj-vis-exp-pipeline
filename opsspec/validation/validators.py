@@ -7,7 +7,7 @@ from ..core.models import ChartContext
 from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
-from ..specs.compare import CompareBoolOp, LagDiffOp, PairDiffOp
+from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import DetermineRangeOp, FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -385,6 +385,30 @@ def validate_operation(
     if isinstance(op, SetOp):
         if op.meta is None or len(op.meta.inputs) < 2:
             raise ValueError('setOp requires meta.inputs with at least two nodeIds')
+        return op, warnings
+
+    if isinstance(op, DiffOp):
+        if op.targetA is None:
+            raise ValueError('diff targetA는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.targetB is None:
+            raise ValueError('diff targetB는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.meta is not None and len(op.meta.inputs) != 2:
+            raise ValueError(
+                f'diff meta.inputs에 정확히 2개의 nodeId가 필요합니다 (현재 {len(op.meta.inputs)}개)'
+            )
+        return op, warnings
+
+    if isinstance(op, CompareOp):
+        if op.targetA is None:
+            raise ValueError('compare targetA는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.targetB is None:
+            raise ValueError('compare targetB는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.which is None:
+            raise ValueError('compare which는 필수입니다 ("min" 또는 "max")')
+        if op.meta is not None and len(op.meta.inputs) != 2:
+            raise ValueError(
+                f'compare meta.inputs에 정확히 2개의 nodeId가 필요합니다 (현재 {len(op.meta.inputs)}개)'
+            )
         return op, warnings
 
     if isinstance(op, ScaleOp):
