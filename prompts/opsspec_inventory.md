@@ -46,6 +46,19 @@ Rules:
     Step-Compose handles intermediate steps at compose-time.
   - "clearly implied" means: the sentence directly describes the action or result for this op.
     It does NOT mean: "this op will eventually be needed to reach the final answer."
+- CRITICAL: Do NOT anticipate future operations based on semantic inference across sentences.
+  - When the explanation has multiple sentences, each sentence MUST be treated independently.
+  - Do NOT add a task to sentence N just because it logically prepares for an operation in sentence N+1.
+  - Example (WRONG):
+    Sentence 1: "retrieve value of 2016 and 2017"
+    → LLM infers: "these two values will be diffed later, so I should add a diff task here"
+    → Output: [retrieveValue(2016), retrieveValue(2017), diff(...)] ✗
+  - Example (RIGHT):
+    Sentence 1: "retrieve value of 2016 and 2017" (only retrieve is mentioned)
+    → Output: [retrieveValue(2016), retrieveValue(2017)] (no diff)
+    Sentence 3: "get the difference of the retrieved values"
+    → Output: [diff(...)] (diff goes here, where it is explicitly mentioned)
+  - Rationale: Step-Compose will compose operations across sentence boundaries. Inventory must not pre-compose.
 - First infer the intended final result artifact from the explanation/question:
   - scalar (single number), boolean, single target(row 1), list/table(rows 2+), or set-like list.
   - Inventory must be consistent with ONE primary final artifact type.
