@@ -102,6 +102,19 @@ Critical rules:
    When the explanation sentence is ambiguous (e.g., "double the X" without naming X explicitly),
    derive X from the QUESTION before selecting the ref.
 
+10) COMPREHENSIVE INPUTS GATHERING:
+   Before proposing inputs for the current op, ask:
+   "Does this operation logically depend on ALL relevant prior nodes?"
+   If yes (especially for comparative/aggregate ops like findExtremum, compare, diff):
+   - Do NOT omit available intermediate nodes just because they're older.
+   - Example:
+     Available: n1=Tablets_2017, n2=MobilePCs_2022
+     Task: findExtremum (find max between the two values)
+     → inputs MUST be ['n1', 'n2'], NOT ['n1'] alone.
+   The explanation sentence may be implicit about all needed inputs.
+   Derive them from the QUESTION's semantic intent, which often requires
+   comparing/aggregating MULTIPLE intermediate results together.
+
 Mini pattern (subset average via inputs):
 - Wrong:
   {

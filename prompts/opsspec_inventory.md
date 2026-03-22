@@ -143,6 +143,33 @@ Rules:
     → 3 diff tasks: diff(A_start, A_end), diff(B_start, B_end), diff(diff_A, diff_B)
     ← RIGHT: fully computes both changes and their comparison
 
+- MULTI-OP GENERATION PER SENTENCE:
+  A single explanation sentence may require MULTIPLE ops to be extracted.
+  - Example:
+    explanation: "Filter for the revenue of Thailand and the Philippines"
+    question: "in which years did Thailand's revenue exceed Philippines?"
+    → This sentence requires TWO ops:
+      1) filter(field="Country", include=["Thailand", "Philippines"])  ← the explicit "filter"
+      2) pairDiff(...) ← implicit "compare" to prepare for later question answering
+      So taskIds: o1 (filter), o2 (pairDiff) with sentenceIndex=1 for both.
+    → Do NOT create filter-only (no pairDiff) just because the sentence only mentions "filter".
+    → The question context ("Thailand exceeded Philippines") reveals that pairDiff is needed.
+
+- PAIRDIFF GROUPORDER SEMANTICS:
+  For pairDiff(groupA, groupB):
+  - Read the QUESTION to understand which direction the comparison should go.
+  - groupA should be the SUBJECT being asked about (numerator in the division).
+  - groupB should be the BASELINE/COMPARISON target (denominator).
+  - Example:
+    question: "in which years did Thailand's revenue exceed that of Philippines?"
+    → groupA="Thailand" (the subject being analyzed)
+    → groupB="Philippines" (the baseline it is compared against)
+    → signed=true (so positive result = Thailand > Philippines)
+  - Counter-example (WRONG):
+    question: "in which years did Thailand's revenue exceed Philippines?"
+    → groupA="Philippines", groupB="Thailand"  ← WRONG: reversed
+    → This would make positive results mean Philippines > Thailand, contradicting the question.
+
 Question:
 $question
 
