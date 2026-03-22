@@ -109,6 +109,34 @@ Rules:
   - In membership mode, paramsHint.field may be any categorical field (except series_field).
   - If the explanation only says "filter only A and B" and A/B are series values (from series_domain),
     do NOT create a group-only filter task; attach the series restriction to other substantive tasks via paramsHint.group.
+- TOP/BOTTOM N RULE: When the explanation says "top N", "highest N", "lowest N", "bottom N" values by measure field:
+  1. Look at rows_preview to read the actual (category, measure) pairs.
+  2. Sort them mentally by the measure field (desc for top/highest, asc for bottom/lowest).
+  3. Extract the N category values (dimension field values).
+  4. Use op="filter" with paramsHint.include=[<specific_N_values>].
+  - Do NOT use sort + nth for this case. Always resolve to specific values from rows_preview.
+  - Example:
+    rows_preview shows: {Year:"2018", prod:100}, {Year:"2019", prod:95}, {Year:"2017", prod:80} ...
+    explanation: "find the top 2 years by production"
+    → filter(field="Year", include=["2018", "2019"])  ← hardcoded from rows_preview
+    NOT: sort(desc) + nth(1,2)
+- LAST SENTENCE RULE: The tasks in the LAST sentence of the explanation must collectively
+  produce the final answer to the QUESTION.
+  1. Re-read the QUESTION to understand the complete structure of the final answer.
+  2. If the question asks to compare two derived values (e.g., "how big was X compared to Y?"),
+     generate ALL ops needed: compute X, compute Y, then compare/diff X and Y.
+  3. If the explanation uses vague or singular language in the last sentence
+     (e.g., "get the difference", "compare the values"), expand it to the full set of
+     ops implied by the question — do not stop at one op if the question requires more.
+  - Example (WRONG):
+    question: "how big was change A compared to change B?"
+    last sentence: "get the difference of the retrieved values"
+    → Only 1 diff task  ← WRONG: doesn't fully answer the comparison
+  - Example (RIGHT):
+    question: "how big was change A compared to change B?"
+    last sentence: "get the difference of the retrieved values"
+    → 3 diff tasks: diff(A_start, A_end), diff(B_start, B_end), diff(diff_A, diff_B)
+    ← RIGHT: fully computes both changes and their comparison
 
 Question:
 $question
