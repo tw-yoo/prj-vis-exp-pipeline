@@ -64,111 +64,111 @@ spec_0pzdf7hfbxgjghsa = {
         DiffOp(
             id="n7",
             meta=OpsMeta(nodeId="n7", inputs=["n5", "n6"], sentenceIndex=3),
-            targetA="ref:n3",
+            targetA="ref:n5",
             targetB="ref:n6",
         )
     ]
 }
-# spec_0k7bm9iqewnrzj47 = {
-#     "ops": [
-#         FilterOp(
-#             id="n1",
-#             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-#             field="Year",
-#             include=["2018", "2019", "2020"]
-#         ),
-#     ],
-#     "ops2": [
-#         AverageOp(
-#             id="n2",
-#             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
-#             field="Production in million liters",
-#         ),
-#     ],
-#     "ops3": [
-#         FilterOp(
-#             id="n3",
-#             meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
-#             field="Year",
-#             include=["1995", "2000", "2005"]
-#         ),
-#     ],
-#     "ops4": [
-#         AverageOp(
-#             id="n4",
-#             meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=4),
-#             field="Production in million liters",
-#         ),
-#     ],
-#     "ops5": [
-#         CompareOp(
-#             id="n5",
-#             meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=5),
-#             which="min",
-#             targetA="ref:n2",
-#             targetB="ref:n4",
-#         ),
-#         ScaleOp(
-#             id="n6",
-#             meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=5),
-#             target="ref:n5", factor=2.0
-#         )
-#     ],
-#     "ops6": [
-#         CompareOp(
-#             id="n7",
-#             meta=OpsMeta(nodeId="n7", inputs=["n2", "n4"], sentenceIndex=6),
-#             which="max",
-#             targetA="ref:n2",
-#             targetB="ref:n4",
-#         ),
-#         CompareOp(
-#             id="n8",
-#             meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"], sentenceIndex=6),
-#             which="max",
-#             targetA="ref:n6",
-#             targetB="ref:n7",
-#         ),
-#     ],
-# }
-# spec_0w88bu7qm4ilsqmh = {
-#     "ops": [
-#         FilterOp(
-#             id="n1",
-#             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-#             field="Year",
-#             include=["1995", "1999"]
-#         ),
-#         AverageOp(
-#             id="n2",
-#             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
-#             field="Installed base in million units",
-#         ),
-#     ],
-#     "ops2": [
-#         FilterOp(
-#             id="n3",
-#             meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
-#             field="Year",
-#             include=["2010", "2013", "2017"]
-#         ),
-#         AverageOp(
-#             id="n4",
-#             meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
-#             field="Installed base in million units",
-#         ),
-#     ],
-#     "ops3": [
-#         DiffOp(
-#             id="n5",
-#             meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
-#             field="Installed base in million units",
-#             targetA="ref:n2",
-#             targetB="ref:n4",
-#         ),
-#     ],
-# }
-#
+spec_0k7bm9iqewnrzj47 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Year",
+            include=["2008", "2019", "2020"]
+        ),
+    ],
+    "ops2": [
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Production in million liters",
+        ),
+    ],
+    "ops3": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
+            field="Year",
+            include=["1995", "2000", "2005"]
+        ),
+    ],
+    "ops4": [
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=4),
+            field="Production in million liters",
+        ),
+    ],
+    "ops5": [
+        CompareOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=5),
+            which="min",
+            targetA="ref:n2",
+            targetB="ref:n4",
+        ),
+        ScaleOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=5),
+            target="ref:n5", factor=2.0
+        )
+    ],
+    "ops6": [
+        CompareOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n2", "n4"], sentenceIndex=6),
+            which="max",
+            targetA="ref:n2",
+            targetB="ref:n4",
+        ),
+        CompareBoolOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"], sentenceIndex=6),
+            operator=">",
+            targetA="ref:n6",
+            targetB="ref:n7",
+        ),
+    ],
+}
+spec_0w88bu7qm4ilsqmh = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Year",
+            include=["1995", "1999"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            field="Installed base in million units",
+        ),
+    ],
+    "ops2": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            field="Year",
+            include=["2010", "2013", "2017"]
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+            field="Installed base in million units",
+        ),
+    ],
+    "ops3": [
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+            field="Installed base in million units",
+            targetA="ref:n2",
+            targetB="ref:n4",
+        ),
+    ],
+}
+
 # # stacked bar
 # spec_10t8o5vhethzeod1 = {
 #     "ops":[
