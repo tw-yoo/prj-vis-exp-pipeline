@@ -99,9 +99,9 @@ def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
         pytest.skip(f"scenario 파일 없음: chart_id={chart_id}")
 
     # pipeline 직접 호출 (HTTP 서버 불필요)
-    from opsspec.modules.pipeline import RecursiveGrammarPipeline
+    from opsspec.modules.pipeline import OpsSpecPipeline
 
-    pipeline = RecursiveGrammarPipeline()
+    pipeline = OpsSpecPipeline()
     result = pipeline.generate(
         question=scenario["question"],
         explanation=scenario["explanation"],
