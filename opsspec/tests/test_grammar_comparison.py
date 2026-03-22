@@ -40,14 +40,14 @@ os.environ["OPENAI_MODEL"] = OPENAI_MODEL
 EVAL_RESULTS_CSV = Path(__file__).parent / "eval_results.csv"
 
 CSV_COLUMNS = [
-    "spec_id",        # spec 변수명 (e.g. spec_0o12tngadmjjux2n)
-    "backend",        # pipeline.llm.backend
-    "model",          # 실제 사용 모델명
-    "gt_spec",        # 정답 spec JSON 문자열
-    "success",        # True / False
-    "pred_output",    # pipeline 출력 JSON 문자열
-    "failure_reason", # cmp.report() (성공 시 "")
-    "timestamp",      # ISO 8601
+    "spec_id",
+    "backend",
+    "model",
+    "gt_spec",
+    "success",
+    "pred_output",
+    "failure_reason",
+    "timestamp",
 ]
 
 # ────────────────────────────────────────────────────────────────────────────
