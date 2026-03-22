@@ -1,7 +1,6 @@
 """test_grammar.py 정답 spec과 /generate_grammar 출력 비교 테스트."""
 from __future__ import annotations
 
-import csv
 import json
 import os
 import uuid
@@ -35,44 +34,34 @@ os.environ["OLLAMA_MODEL"] = OLLAMA_MODEL
 os.environ["OPENAI_MODEL"] = OPENAI_MODEL
 
 # ────────────────────────────────────────────────────────────────────────────
-# CSV 설정 (코드로 직접 지정)
+# JSON 결과 파일 설정 (코드로 직접 지정)
 # ────────────────────────────────────────────────────────────────────────────
 
-EVAL_RESULTS_CSV = Path(__file__).parent / "eval_results.csv"
-
-CSV_COLUMNS = [
-    "spec_id",
-    "backend",
-    "model",
-    "gt_spec",
-    "success",
-    "pred_output",
-    "failure_reason",
-    "timestamp",
-]
+EVAL_RESULTS_JSON = Path(__file__).parent / "eval_results.json"
 
 # ────────────────────────────────────────────────────────────────────────────
-# CSV 헬퍼
+# JSON 헬퍼
 # ────────────────────────────────────────────────────────────────────────────
 
 
 def _load_done_keys() -> set[tuple[str, str, str, str]]:
-    """CSV에서 이미 실행된 (spec_id, backend, model, gt_spec) 조합 로드."""
-    if not EVAL_RESULTS_CSV.exists():
+    """JSON에서 이미 실행된 (spec_id, backend, model, gt_spec_canonical) 조합 로드."""
+    if not EVAL_RESULTS_JSON.exists():
         return set()
-    with EVAL_RESULTS_CSV.open(newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        return {(r["spec_id"], r["backend"], r["model"], r["gt_spec"]) for r in reader}
+    records: list[dict] = json.loads(EVAL_RESULTS_JSON.read_text(encoding="utf-8"))
+    return {
+        (r["spec_id"], r["backend"], r["model"], json.dumps(r["gt_spec"], sort_keys=True))
+        for r in records
+    }
 
 
-def _append_row(row: dict) -> None:
-    """결과를 CSV에 한 행 추가 (파일 없으면 헤더 포함해서 생성)."""
-    write_header = not EVAL_RESULTS_CSV.exists()
-    with EVAL_RESULTS_CSV.open("a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
-        if write_header:
-            writer.writeheader()
-        writer.writerow(row)
+def _append_record(record: dict) -> None:
+    """결과를 JSON 배열에 추가 (파일 없으면 새로 생성)."""
+    records: list[dict] = []
+    if EVAL_RESULTS_JSON.exists():
+        records = json.loads(EVAL_RESULTS_JSON.read_text(encoding="utf-8"))
+    records.append(record)
+    EVAL_RESULTS_JSON.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _get_model_name(pipeline: Any) -> str:
@@ -113,7 +102,7 @@ def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
 
     test_inputs.csv에 chart_id가 없으면 skip.
     ChartQA 파일이 없으면 skip.
-    이미 동일한 (spec_id, backend, model, gt_spec) 조합이 CSV에 있으면 skip.
+    이미 동일한 (spec_id, backend, model, gt_spec) 조합이 eval_results.json에 있으면 skip.
     """
     chart_id = spec_name.removeprefix("spec_")
 
@@ -142,11 +131,11 @@ def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
 
     # ground truth 직렬화
     gt_serialized = serialize_spec_dict(spec_dict)
-    gt_spec_json = json.dumps(gt_serialized, ensure_ascii=False)
 
     # 중복 체크 — 이미 실행된 조합이면 skip
+    gt_spec_canonical = json.dumps(gt_serialized, sort_keys=True)
     done_keys = _load_done_keys()
-    if (spec_name, backend, model, gt_spec_json) in done_keys:
+    if (spec_name, backend, model, gt_spec_canonical) in done_keys:
         pytest.skip(f"이미 실행된 조합: spec_id={spec_name}, backend={backend}, model={model}")
 
     # pipeline 실행
@@ -167,14 +156,14 @@ def test_grammar_matches_ground_truth(spec_name: str, spec_dict: dict) -> None:
 
     cmp: SpecCompareResult = compare_spec_groups(gt_serialized, pred_groups)
 
-    # CSV 기록
-    _append_row({
+    # JSON 기록
+    _append_record({
         "spec_id":        spec_name,
         "backend":        backend,
         "model":          model,
-        "gt_spec":        gt_spec_json,
+        "gt_spec":        gt_serialized,
         "success":        cmp.all_match,
-        "pred_output":    json.dumps(pred_groups, ensure_ascii=False),
+        "pred_output":    pred_groups,
         "failure_reason": "" if cmp.all_match else cmp.report(),
         "timestamp":      datetime.now(timezone.utc).isoformat(),
     })
