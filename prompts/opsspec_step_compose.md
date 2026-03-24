@@ -102,18 +102,31 @@ Critical rules:
    When the explanation sentence is ambiguous (e.g., "double the X" without naming X explicitly),
    derive X from the QUESTION before selecting the ref.
 
-10) COMPREHENSIVE INPUTS GATHERING:
-   Before proposing inputs for the current op, ask:
-   "Does this operation logically depend on ALL relevant prior nodes?"
-   If yes (especially for comparative/aggregate ops like findExtremum, compare, diff):
-   - Do NOT omit available intermediate nodes just because they're older.
-   - Example:
-     Available: n1=Tablets_2017, n2=MobilePCs_2022
-     Task: findExtremum (find max between the two values)
-     → inputs MUST be ['n1', 'n2'], NOT ['n1'] alone.
-   The explanation sentence may be implicit about all needed inputs.
-   Derive them from the QUESTION's semantic intent, which often requires
-   comparing/aggregating MULTIPLE intermediate results together.
+10) COMPREHENSIVE INPUTS GATHERING - 필수 규칙 (MUST APPLY):
+   For comparison/ranking operations (findExtremum, compare, diff, pairDiff):
+
+   CRITICAL RULE: inputs MUST include ALL available nodes that contribute
+   to the semantic meaning of the current task.
+
+   Specific cases (MUST apply):
+
+   - findExtremum: If multiple candidate nodes exist (from different groups/times),
+     inputs MUST contain ALL of them.
+     Example:
+       Available: n1 (Tablets 2017: 173.56), n2 (Mobile PCs 2022: 244.43)
+       Task: findExtremum("field", which="max")
+       → inputs MUST be ['n1', 'n2'], NOT ['n1'] alone
+       → Rationale: "max between two values" requires BOTH values to compare
+       → If only n1 is included, the max is not determined between the two candidates
+
+   - compare/diff: MUST include exactly 2 nodes being compared
+
+   - pairDiff: Include all relevant input nodes for the pair comparison
+
+   IMPORTANT: The explanation sentence may be implicit about all needed inputs.
+   Do NOT assume that "find maximum" or "check which is greater" requires only one input.
+   Derive from the QUESTION's semantic intent: if the question asks to compare
+   MULTIPLE values or entities, then ALL available candidate nodes must be inputs.
 
 Mini pattern (subset average via inputs):
 - Wrong:

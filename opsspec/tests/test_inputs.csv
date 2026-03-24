@@ -56,7 +56,7 @@ op5"
 - Average the the percentage of responses of Favourable views of U.S from filtered data",
 99,E2,linesimple,66va2s35es5t86l3,line_simple_66va2s35es5t86l3,What is the year with the largest increase compared to the previous year?,"- Find the difference between the current value and the previous data value for all years with previous years.
 - Find the year in which the highest value was recorded among the differences.",
-113,,barsimple,0w88bu7qm4ilsqmh,bar_simple_0w88bu7qm4ilsqmh,What is the difference between the average of before 2000 and from 2010?,"1. Find the average of the values for 1955 and 1999.
+113,,barsimple,0w88bu7qm4ilsqmh,bar_simple_0w88bu7qm4ilsqmh,What is the difference between the average of before 2000 and from 2010?,"1. Find the average of the values for 1995 and 1999.
 2. Find the average of the values for 2010, 2013, and 2017.
 3. Calculate the difference between the two averages.",DiffOps 있음
 135,,bargrouped,1ar60b8rke2d8e64,bar_grouped_1ar60b8rke2d8e64,What year is the smallest difference between the two types?,"1. Calculate the rate differences between two types for each year

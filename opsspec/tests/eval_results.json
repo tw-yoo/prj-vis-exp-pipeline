@@ -1,0 +1,1647 @@
+[
+  {
+    "spec_id": "spec_0o12tngadmjjux2n",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0o12tngadmjjux2n",
+    "question": "How many years are above the average?",
+    "explanation": "1. Find average\n2. filter which countries are above the average",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "average",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Production in million units"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2
+          },
+          "field": "Production in million units",
+          "operator": ">",
+          "value": "ref:n1"
+        }
+      ]
+    },
+    "success": true,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "average",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "Production in million units"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Production in million units",
+          "operator": ">",
+          "value": "ref:n1"
+        },
+        {
+          "op": "count",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [
+              "n2"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 3
+            },
+            "source": "recursive_step=3;taskId=o3"
+          }
+        }
+      ]
+    },
+    "failure_reason": "",
+    "timestamp": "2026-03-22T12:27:31.977189+00:00"
+  },
+  {
+    "spec_id": "spec_0pzdf7hfbxgjghsa",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0pzdf7hfbxgjghsa",
+    "question": "How big was the change from 2016 to 2017 compared to the change from 2017 to 2018?",
+    "explanation": "1. retrieve value of 2016 and 2017\n2. retrieve value of 2017 and 2018\n3. get the difference of the retrieved values",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "retrieveValue",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Year",
+          "target": "2016"
+        },
+        {
+          "op": "retrieveValue",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Year",
+          "target": "2017"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "retrieveValue",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 2
+          },
+          "field": "Year",
+          "target": "2017"
+        },
+        {
+          "op": "retrieveValue",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [],
+            "sentenceIndex": 2
+          },
+          "field": "Year",
+          "target": "2018"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "diff",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n1",
+              "n2"
+            ],
+            "sentenceIndex": 3
+          },
+          "targetA": "ref:n1",
+          "targetB": "ref:n2",
+          "signed": false
+        },
+        {
+          "op": "diff",
+          "id": "n6",
+          "meta": {
+            "nodeId": "n6",
+            "inputs": [
+              "n3",
+              "n4"
+            ],
+            "sentenceIndex": 3
+          },
+          "targetA": "ref:n3",
+          "targetB": "ref:n4",
+          "signed": false
+        },
+        {
+          "op": "diff",
+          "id": "n7",
+          "meta": {
+            "nodeId": "n7",
+            "inputs": [
+              "n5",
+              "n6"
+            ],
+            "sentenceIndex": 3
+          },
+          "targetA": "ref:n5",
+          "targetB": "ref:n6",
+          "signed": false
+        }
+      ]
+    },
+    "success": true,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "retrieveValue",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "Year",
+          "target": "2016"
+        },
+        {
+          "op": "retrieveValue",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Year",
+          "target": "2017"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "retrieveValue",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=3;taskId=o3"
+          },
+          "field": "Year",
+          "target": "2017"
+        },
+        {
+          "op": "retrieveValue",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=4;taskId=o4"
+          },
+          "field": "Year",
+          "target": "2018"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "diff",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n1",
+              "n2"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=5;taskId=o5"
+          },
+          "targetA": "ref:n1",
+          "targetB": "ref:n2",
+          "signed": false
+        },
+        {
+          "op": "diff",
+          "id": "n6",
+          "meta": {
+            "nodeId": "n6",
+            "inputs": [
+              "n3",
+              "n4"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=6;taskId=o6"
+          },
+          "targetA": "ref:n3",
+          "targetB": "ref:n4",
+          "signed": false
+        },
+        {
+          "op": "diff",
+          "id": "n7",
+          "meta": {
+            "nodeId": "n7",
+            "inputs": [
+              "n5",
+              "n6"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 3
+            },
+            "source": "recursive_step=7;taskId=o7"
+          },
+          "targetA": "ref:n5",
+          "targetB": "ref:n6",
+          "signed": false
+        }
+      ]
+    },
+    "failure_reason": "",
+    "timestamp": "2026-03-22T12:27:47.235501+00:00"
+  },
+  {
+    "spec_id": "spec_0k7bm9iqewnrzj47",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0k7bm9iqewnrzj47",
+    "question": "Is the average of the top three greater than twice the average of the lowest three?",
+    "explanation": "1. find the top three values\n2. calculate the average\n3. find the lowest three values\n4. calculate the average\n5. double the lowest average\n6. compare the two values to find which one is bigger",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Year",
+          "include": [
+            "2008",
+            "2019",
+            "2020"
+          ]
+        }
+      ],
+      "ops2": [
+        {
+          "op": "average",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2
+          },
+          "field": "Production in million liters"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 3
+          },
+          "field": "Year",
+          "include": [
+            "1995",
+            "2000",
+            "2005"
+          ]
+        }
+      ],
+      "ops4": [
+        {
+          "op": "average",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 4
+          },
+          "field": "Production in million liters"
+        }
+      ],
+      "ops5": [
+        {
+          "op": "compare",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 5
+          },
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "which": "min"
+        },
+        {
+          "op": "scale",
+          "id": "n6",
+          "meta": {
+            "nodeId": "n6",
+            "inputs": [
+              "n5"
+            ],
+            "sentenceIndex": 5
+          },
+          "target": "ref:n5",
+          "factor": 2.0
+        }
+      ],
+      "ops6": [
+        {
+          "op": "compare",
+          "id": "n7",
+          "meta": {
+            "nodeId": "n7",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 6
+          },
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "which": "max"
+        },
+        {
+          "op": "compareBool",
+          "id": "n8",
+          "meta": {
+            "nodeId": "n8",
+            "inputs": [
+              "n6",
+              "n7"
+            ],
+            "sentenceIndex": 6
+          },
+          "targetA": "ref:n6",
+          "targetB": "ref:n7",
+          "operator": ">"
+        }
+      ]
+    },
+    "success": false,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "Year",
+          "include": [
+            "2008",
+            "2019",
+            "2020"
+          ]
+        }
+      ],
+      "ops2": [
+        {
+          "op": "average",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Production in million liters"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=3;taskId=o3"
+          },
+          "field": "Year",
+          "include": [
+            "1995",
+            "2000",
+            "2005"
+          ]
+        }
+      ],
+      "ops4": [
+        {
+          "op": "average",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 4,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=4;taskId=o4"
+          },
+          "field": "Production in million liters"
+        }
+      ],
+      "ops5": [
+        {
+          "op": "scale",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n4"
+            ],
+            "sentenceIndex": 5,
+            "view": {
+              "phase": 3
+            },
+            "source": "recursive_step=5;taskId=o5"
+          },
+          "target": "ref:n4",
+          "factor": 2.0
+        }
+      ],
+      "ops6": [
+        {
+          "op": "compareBool",
+          "id": "n6",
+          "meta": {
+            "nodeId": "n6",
+            "inputs": [
+              "n2",
+              "n5"
+            ],
+            "sentenceIndex": 6,
+            "view": {
+              "phase": 4
+            },
+            "source": "recursive_step=6;taskId=o6"
+          },
+          "targetA": "ref:n2",
+          "targetB": "ref:n5",
+          "operator": ">"
+        }
+      ]
+    },
+    "failure_reason": "op 일치: 4/8 (50.0%)\ngroup 일치: 4/6\n  ops5: op 개수 불일치 (정답=2, 예측=1)\n  ops5[0]: 불일치\n    .op: 기대='compare' / 실제='scale'\n    .targetA: 기대='ref:n2' / 실제=None\n    .factor: 기대=None / 실제=2.0\n    .which: 기대='min' / 실제=None\n    .targetB: 기대='ref:n4' / 실제=None\n    .target: 기대=None / 실제='ref:n4'\n    .meta.inputs: 기대=['n2', 'n4'] / 실제=['n4']\n  ops6: op 개수 불일치 (정답=2, 예측=1)\n  ops6[0]: 불일치\n    .op: 기대='compare' / 실제='compareBool'\n    .operator: 기대=None / 실제='>'\n    .which: 기대='max' / 실제=None\n    .targetB: 기대='ref:n4' / 실제='ref:n5'\n    .meta.inputs: 기대=['n2', 'n4'] / 실제=['n2', 'n5']",
+    "timestamp": "2026-03-22T12:27:59.823508+00:00"
+  },
+  {
+    "spec_id": "spec_0w88bu7qm4ilsqmh",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0w88bu7qm4ilsqmh",
+    "question": "What is the difference between the average of before 2000 and from 2010?",
+    "explanation": "1. Find the average of the values for 1995 and 1999.\n2. Find the average of the values for 2010, 2013, and 2017.\n3. Calculate the difference between the two averages.",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Year",
+          "include": [
+            "1995",
+            "1999"
+          ]
+        },
+        {
+          "op": "average",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 1
+          },
+          "field": "Installed base in million units"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 2
+          },
+          "field": "Year",
+          "include": [
+            "2010",
+            "2013",
+            "2017"
+          ]
+        },
+        {
+          "op": "average",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 2
+          },
+          "field": "Installed base in million units"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "diff",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 3
+          },
+          "field": "Installed base in million units",
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "signed": false
+        }
+      ]
+    },
+    "success": true,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "Year",
+          "include": [
+            "1995",
+            "1999"
+          ]
+        },
+        {
+          "op": "average",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Installed base in million units"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=3;taskId=o3"
+          },
+          "field": "Year",
+          "include": [
+            "2010",
+            "2013",
+            "2017"
+          ]
+        },
+        {
+          "op": "average",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=4;taskId=o4"
+          },
+          "field": "Installed base in million units"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "diff",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 3
+            },
+            "source": "recursive_step=5;taskId=o5"
+          },
+          "field": "Installed base in million units",
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "signed": false
+        }
+      ]
+    },
+    "failure_reason": "",
+    "timestamp": "2026-03-22T12:28:11.191182+00:00"
+  },
+  {
+    "spec_id": "spec_10t8o5vhethzeod1",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "10t8o5vhethzeod1",
+    "question": "In which year was the agriculture sector the highest",
+    "explanation": "1. get the all values from the agriculture sector\n2. find the maximum value",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "group": "Agriculture"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2
+          },
+          "field": "Share_of_GDP",
+          "which": "max"
+        }
+      ]
+    },
+    "success": true,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "group": "Agriculture"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Share_of_GDP",
+          "which": "max"
+        }
+      ]
+    },
+    "failure_reason": "",
+    "timestamp": "2026-03-22T12:28:16.107551+00:00"
+  },
+  {
+    "spec_id": "spec_0gzowodb2py0d1s9",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0gzowodb2py0d1s9",
+    "question": "How many years did Thailand's revenue exceed that of the Philippines'?",
+    "explanation": "1. Filter for the revenue of Thailand and the Philippines\n2. Compare the revenue of Thailand and the Philippines\n3. count the years for which Thailand's revenue was higher.",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "group": [
+            "Philippines",
+            "Thailand"
+          ]
+        }
+      ],
+      "ops2": [
+        {
+          "op": "pairDiff",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2
+          },
+          "by": "Country_Region",
+          "field": "Revenue_Million_USD",
+          "groupA": "Thailand",
+          "groupB": "Philippines",
+          "signed": true,
+          "absolute": false
+        }
+      ],
+      "ops3": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [
+              "n2"
+            ],
+            "sentenceIndex": 3
+          },
+          "field": "Revenue_Million_USD",
+          "operator": ">",
+          "value": 0
+        },
+        {
+          "op": "count",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 3
+          },
+          "field": "Revenue_Million_USD"
+        }
+      ]
+    },
+    "success": false,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "group": [
+            "Thailand",
+            "Philippines"
+          ]
+        }
+      ],
+      "ops2": [
+        {
+          "op": "pairDiff",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "by": "Year",
+          "seriesField": "Country_Region",
+          "field": "Revenue_Million_USD",
+          "groupA": "Thailand",
+          "groupB": "Philippines",
+          "signed": true,
+          "absolute": false
+        }
+      ],
+      "ops3": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [
+              "n2"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 3
+            },
+            "source": "recursive_step=3;taskId=o3"
+          },
+          "field": "Revenue_Million_USD",
+          "operator": ">",
+          "value": 0
+        },
+        {
+          "op": "count",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 4
+            },
+            "source": "recursive_step=4;taskId=o4"
+          },
+          "field": "Revenue_Million_USD"
+        }
+      ]
+    },
+    "failure_reason": "op 일치: 2/4 (50.0%)\ngroup 일치: 1/3\n  ops[0]: 불일치\n    .group: 기대=['Philippines', 'Thailand'] / 실제=['Thailand', 'Philippines']\n  ops2[0]: 불일치\n    .by: 기대='Country_Region' / 실제='Year'\n    .seriesField: 기대=None / 실제='Country_Region'",
+    "timestamp": "2026-03-22T12:28:36.663615+00:00"
+  },
+  {
+    "spec_id": "spec_004fhteah0l9kud2",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "004fhteah0l9kud2",
+    "question": "What is the difference between the average of Commercial and the average of Matchday?",
+    "explanation": "1. Add all the Commercial values for each year.\n2. Divide the value by six.\n3. Add all the values of the matchday for each year.\n4. Divide the value by six.\n5. Find the difference between the two computed values.",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "sum",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Revenue_Million_Euros",
+          "group": "Commercial"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "scale",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2
+          },
+          "target": "ref:n1",
+          "factor": 0.16666666666666666
+        }
+      ],
+      "ops3": [
+        {
+          "op": "sum",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 3
+          },
+          "field": "Revenue_Million_Euros",
+          "group": "Matchday"
+        }
+      ],
+      "ops4": [
+        {
+          "op": "scale",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 4
+          },
+          "target": "ref:n3",
+          "factor": 0.16666666666666666
+        }
+      ],
+      "ops5": [
+        {
+          "op": "diff",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 5
+          },
+          "field": "Revenue_Million_Euros",
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "signed": true
+        }
+      ]
+    },
+    "success": true,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "sum",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "Revenue_Million_Euros",
+          "group": "Commercial"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "scale",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "target": "ref:n1",
+          "factor": 0.16666666666666666
+        }
+      ],
+      "ops3": [
+        {
+          "op": "sum",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=3;taskId=o3"
+          },
+          "field": "Revenue_Million_Euros",
+          "group": "Matchday"
+        }
+      ],
+      "ops4": [
+        {
+          "op": "scale",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 4,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=4;taskId=o4"
+          },
+          "target": "ref:n3",
+          "factor": 0.16666666666666666
+        }
+      ],
+      "ops5": [
+        {
+          "op": "diff",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 5,
+            "view": {
+              "phase": 3
+            },
+            "source": "recursive_step=5;taskId=o5"
+          },
+          "field": "Revenue_Million_Euros",
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "signed": true
+        }
+      ]
+    },
+    "failure_reason": "",
+    "timestamp": "2026-03-22T12:28:48.061135+00:00"
+  },
+  {
+    "spec_id": "spec_11e148qcs7x70t8v",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "11e148qcs7x70t8v",
+    "question": "in which years does south korea have a bigger value than france?",
+    "explanation": "1. Get difference between south korea and france in every year\n2. Filter the year with a positive value",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "pairDiff",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 1
+          },
+          "by": "Race/Ethnicity",
+          "field": "Share_of_Import_Value",
+          "groupA": "South Korea",
+          "groupB": "France",
+          "signed": true,
+          "absolute": false
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [
+              "n2"
+            ],
+            "sentenceIndex": 2
+          },
+          "field": "Share_of_Import_Value",
+          "operator": ">",
+          "value": 0
+        }
+      ]
+    },
+    "success": false,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "pairDiff",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "by": "Period",
+          "seriesField": "Country",
+          "field": "Share_of_Import_Value",
+          "groupA": "South Korea",
+          "groupB": "France",
+          "signed": true,
+          "absolute": false
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Share_of_Import_Value",
+          "operator": ">",
+          "value": 0
+        }
+      ]
+    },
+    "failure_reason": "op 일치: 0/2 (0.0%)\ngroup 일치: 0/2\n  ops[0]: 불일치\n    .by: 기대='Race/Ethnicity' / 실제='Period'\n    .seriesField: 기대=None / 실제='Country'\n    .meta.inputs: 기대=['n1'] / 실제=[]\n  ops2[0]: 불일치\n    .meta.inputs: 기대=['n2'] / 실제=['n1']",
+    "timestamp": "2026-03-22T12:28:54.057115+00:00"
+  },
+  {
+    "spec_id": "spec_0prhtod4tli879nh",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0prhtod4tli879nh",
+    "question": "Which city had the biggest jump in population from 2010 to 2025?",
+    "explanation": "1. get the difference of every city in every year\n2. find the extremum",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "pairDiff",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "by": "City",
+          "seriesField": "Population in millions",
+          "field": "Year",
+          "groupA": "2010",
+          "groupB": "2025",
+          "signed": true,
+          "absolute": false
+        }
+      ],
+      "ops2": [
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2
+          },
+          "which": "max"
+        }
+      ]
+    },
+    "success": false,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "pairDiff",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "by": "City",
+          "seriesField": "Year",
+          "field": "Population in millions",
+          "groupA": "2025",
+          "groupB": "2010",
+          "signed": true,
+          "absolute": false
+        }
+      ],
+      "ops2": [
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 2
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Population in millions",
+          "which": "max"
+        }
+      ]
+    },
+    "failure_reason": "op 일치: 0/2 (0.0%)\ngroup 일치: 0/2\n  ops[0]: 불일치\n    .seriesField: 기대='Population in millions' / 실제='Year'\n    .field: 기대='Year' / 실제='Population in millions'\n    .groupB: 기대='2025' / 실제='2010'\n    .groupA: 기대='2010' / 실제='2025'\n  ops2[0]: 불일치\n    .field: 기대=None / 실제='Population in millions'",
+    "timestamp": "2026-03-22T12:29:50.107188+00:00"
+  },
+  {
+    "spec_id": "spec_0egzejn5mejtnfdm",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0egzejn5mejtnfdm",
+    "question": "What is the difference between Scotland's largest value and England and Wales's smallest value?",
+    "explanation": "1. Check Scotland's Biggest Value\n2. Check the smallest value for England & Wales\n3. Check if the value is greater than the value of number 1 or number 2\n4. Subtract small value from large value\n",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "group": "Scotland"
+        },
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 1
+          },
+          "field": "SharePercentage",
+          "which": "max"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "filter",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [],
+            "sentenceIndex": 2
+          },
+          "group": "England & Wales"
+        },
+        {
+          "op": "findExtremum",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n3"
+            ],
+            "sentenceIndex": 2
+          },
+          "field": "SharePercentage",
+          "which": "min"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "compare",
+          "id": "n5",
+          "meta": {
+            "nodeId": "n5",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 3
+          },
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "which": "max"
+        }
+      ],
+      "ops4": [
+        {
+          "op": "diff",
+          "id": "n6",
+          "meta": {
+            "nodeId": "n6",
+            "inputs": [
+              "n2",
+              "n4"
+            ],
+            "sentenceIndex": 4
+          },
+          "field": "SharePercentage",
+          "targetA": "ref:n2",
+          "targetB": "ref:n4",
+          "signed": false
+        }
+      ]
+    },
+    "success": false,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "findExtremum",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "SharePercentage",
+          "group": "Scotland",
+          "which": "max"
+        }
+      ],
+      "ops2": [
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [],
+            "sentenceIndex": 2,
+            "view": {
+              "phase": 1,
+              "parallelGroup": "p1"
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "SharePercentage",
+          "group": "England & Wales",
+          "which": "min"
+        }
+      ],
+      "ops3": [
+        {
+          "op": "compare",
+          "id": "n3",
+          "meta": {
+            "nodeId": "n3",
+            "inputs": [
+              "n1",
+              "n2"
+            ],
+            "sentenceIndex": 3,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=3;taskId=o3"
+          },
+          "targetA": "ref:n1",
+          "targetB": "ref:n2",
+          "which": "max"
+        }
+      ],
+      "ops4": [
+        {
+          "op": "diff",
+          "id": "n4",
+          "meta": {
+            "nodeId": "n4",
+            "inputs": [
+              "n1",
+              "n2"
+            ],
+            "sentenceIndex": 4,
+            "view": {
+              "phase": 2,
+              "parallelGroup": "p2"
+            },
+            "source": "recursive_step=4;taskId=o4"
+          },
+          "field": "SharePercentage",
+          "targetA": "ref:n2",
+          "targetB": "ref:n1",
+          "signed": false
+        }
+      ]
+    },
+    "failure_reason": "op 일치: 0/6 (0.0%)\ngroup 일치: 0/4\n  ops: op 개수 불일치 (정답=2, 예측=1)\n  ops[0]: 불일치\n    .op: 기대='filter' / 실제='findExtremum'\n    .which: 기대=None / 실제='max'\n    .field: 기대=None / 실제='SharePercentage'\n  ops2: op 개수 불일치 (정답=2, 예측=1)\n  ops2[0]: 불일치\n    .op: 기대='filter' / 실제='findExtremum'\n    .which: 기대=None / 실제='min'\n    .field: 기대=None / 실제='SharePercentage'\n  ops3[0]: 불일치\n    .targetA: 기대='ref:n2' / 실제='ref:n1'\n    .targetB: 기대='ref:n4' / 실제='ref:n2'\n    .meta.inputs: 기대=['n2', 'n4'] / 실제=['n1', 'n2']\n  ops4[0]: 불일치\n    .targetB: 기대='ref:n4' / 실제='ref:n1'\n    .meta.inputs: 기대=['n2', 'n4'] / 실제=['n1', 'n2']",
+    "timestamp": "2026-03-22T12:29:59.687678+00:00"
+  },
+  {
+    "spec_id": "spec_0vw6ydim9cff8ji6",
+    "backend": "unknown",
+    "model": "llama3.1:8b",
+    "chart_id": "0vw6ydim9cff8ji6",
+    "question": "In which year did construction record the highest percentage?",
+    "explanation": "- Compare the percentage values for all years in the construction sector to each other",
+    "gt_spec": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1
+          },
+          "field": "Industry Sector",
+          "include": [
+            "Construction"
+          ]
+        },
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 1
+          },
+          "field": "Share of SMEs",
+          "which": "max"
+        }
+      ]
+    },
+    "success": true,
+    "pred_output": {
+      "ops": [
+        {
+          "op": "filter",
+          "id": "n1",
+          "meta": {
+            "nodeId": "n1",
+            "inputs": [],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 1
+            },
+            "source": "recursive_step=1;taskId=o1"
+          },
+          "field": "Industry Sector",
+          "include": [
+            "Construction"
+          ]
+        },
+        {
+          "op": "findExtremum",
+          "id": "n2",
+          "meta": {
+            "nodeId": "n2",
+            "inputs": [
+              "n1"
+            ],
+            "sentenceIndex": 1,
+            "view": {
+              "phase": 2
+            },
+            "source": "recursive_step=2;taskId=o2"
+          },
+          "field": "Share of SMEs",
+          "which": "max"
+        }
+      ]
+    },
+    "failure_reason": "",
+    "timestamp": "2026-03-22T12:30:23.993847+00:00"
+  }
+]
