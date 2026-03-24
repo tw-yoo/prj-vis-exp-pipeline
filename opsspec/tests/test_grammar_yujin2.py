@@ -2160,156 +2160,6 @@ spec_74p313e1n8rzkfzp = {
   ]
 }
 
-spec_7mgydgux0ay0flv4 = {
-  "ops": [
-    FilterOp(
-      id="n1",
-      meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2003", "2004", "2005"]
-    ),
-    AverageOp(
-      id="n2",
-      meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n3",
-      meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2004", "2005", "2006"]
-    ),
-    AverageOp(
-      id="n4",
-      meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n5",
-      meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2005", "2006", "2007"]
-    ),
-    AverageOp(
-      id="n6",
-      meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n7",
-      meta=OpsMeta(nodeId="n7", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2006", "2007", "2008"]
-    ),
-    AverageOp(
-      id="n8",
-      meta=OpsMeta(nodeId="n7", inputs=["n7"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n9",
-      meta=OpsMeta(nodeId="n9", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2007", "2008", "2009"]
-    ),
-    AverageOp(
-      id="n10",
-      meta=OpsMeta(nodeId="n10", inputs=["n9"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n11",
-      meta=OpsMeta(nodeId="n11", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2009", "2010", "2011"]
-    ),
-    AverageOp(
-      id="n12",
-      meta=OpsMeta(nodeId="n12", inputs=["n11"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n13",
-      meta=OpsMeta(nodeId="n13", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2010", "2011", "2012"]
-    ),
-    AverageOp(
-      id="n14",
-      meta=OpsMeta(nodeId="n14", inputs=["n13"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n15",
-      meta=OpsMeta(nodeId="n15", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2011", "2012", "2013"]
-    ),
-    AverageOp(
-      id="n16",
-      meta=OpsMeta(nodeId="n16", inputs=["n15"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n17",
-      meta=OpsMeta(nodeId="n17", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2013", "2014", "2015"]
-    ),
-    AverageOp(
-      id="n18",
-      meta=OpsMeta(nodeId="n16", inputs=["n17"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n19",
-      meta=OpsMeta(nodeId="n19", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2015", "2016", "2017"]
-    ),
-    AverageOp(
-      id="n20",
-      meta=OpsMeta(nodeId="n20", inputs=["n19"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n21",
-      meta=OpsMeta(nodeId="n21", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2017", "2018", "2019"]
-    ),
-    AverageOp(
-      id="n22",
-      meta=OpsMeta(nodeId="n22", inputs=["n21"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-  ],
-  "ops2":[
-    SortOp(
-      id="n23",
-      meta=OpsMeta(nodeId="n23", inputs=["n2", "n4", "n6", "n8", "n10", "n12", "n14", "n16", "n18", "n20", "n22"], sentenceIndex=2),
-      field="Number of units sold",
-      order=["asc"]
-    )
-  ],
-  "ops3":[
-    FindExtremumOp(
-      id="n24",
-      meta=OpsMeta(nodeId="n24", inputs=["n23"], sentenceIndex=3),
-      field="Number of units sold",
-      which="max"
-    )
-  ],
-  "ops4":[
-    RetrieveValueOp(
-      id="n25",
-      meta=OpsMeta(nodeId="n25", inputs=["n24"], sentenceIndex=4),
-      field="Year",
-      target="ref:n24"
-    )
-  ]
-}
-
 spec_4pi1e6ev8e0zobww = {
   "ops": [
     FilterOp(
@@ -2333,13 +2183,13 @@ spec_4pi1e6ev8e0zobww = {
   "ops2": [
     FilterOp(
       id="n4",
-      meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=2),
+      meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
       field="Year",
       include=["2018", "2019", "2020"]
     ),
     FilterOp(
       id="n5",
-      meta=OpsMeta(nodeId="n2", inputs=["n4"], sentenceIndex=2),
+      meta=OpsMeta(nodeId="n5", inputs=["n4"], sentenceIndex=2),
       field="Gender",
       group="Female"
     ),
@@ -2393,6 +2243,8 @@ spec_4vcdm7lwwlgdd0h1 = {
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Median_Wealth_Million_USD",
+      by="Year",
+      seriesField="Chamber",
       groupA="Senate",
       groupB="House"
     )
@@ -2523,312 +2375,6 @@ spec_240rurpp2arislnt = {
   ]
 }
 
-spec_2a8mliwolqqo6s5u = {
-  "ops": [
-    # 2013
-    FilterOp(
-      id="n1",
-      meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2013"]
-    ),
-    # Asia Pacific's market size
-    FilterOp(
-      id="n2",
-      meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n3",
-      meta=OpsMeta(nodeId="n3", inputs=["n1"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2014
-    FilterOp(
-      id="n4",
-      meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2014"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n5",
-      meta=OpsMeta(nodeId="n5", inputs=["n4"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n6",
-      meta=OpsMeta(nodeId="n6", inputs=["n4"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2015
-    FilterOp(
-      id="n7",
-      meta=OpsMeta(nodeId="n7", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2015"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n8",
-      meta=OpsMeta(nodeId="n8", inputs=["n7"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n9",
-      meta=OpsMeta(nodeId="n9", inputs=["n7"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-    
-    # 2016
-    FilterOp(
-      id="n10",
-      meta=OpsMeta(nodeId="n10", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2016"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n11",
-      meta=OpsMeta(nodeId="n8", inputs=["n10"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n12",
-      meta=OpsMeta(nodeId="n9", inputs=["n10"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2017
-    FilterOp(
-      id="n13",
-      meta=OpsMeta(nodeId="n7", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2017"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n14",
-      meta=OpsMeta(nodeId="n8", inputs=["n13"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n15",
-      meta=OpsMeta(nodeId="n9", inputs=["n13"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2018
-    FilterOp(
-      id="n16",
-      meta=OpsMeta(nodeId="n16", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2018"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n17",
-      meta=OpsMeta(nodeId="n17", inputs=["n16"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n18",
-      meta=OpsMeta(nodeId="n18", inputs=["n7"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2019
-    FilterOp(
-      id="n19",
-      meta=OpsMeta(nodeId="n19", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2019"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n20",
-      meta=OpsMeta(nodeId="n20", inputs=["n19"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n21",
-      meta=OpsMeta(nodeId="n21", inputs=["n19"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2020
-    FilterOp(
-      id="n22",
-      meta=OpsMeta(nodeId="n22", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2020"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n23",
-      meta=OpsMeta(nodeId="n23", inputs=["n22"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n24",
-      meta=OpsMeta(nodeId="n24", inputs=["n22"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # 2021
-    FilterOp(
-      id="n25",
-      meta=OpsMeta(nodeId="n25", inputs=[], sentenceIndex=1),
-      field="Year",
-      include=["2021"]
-    ),
-
-    # Asia Pacific's market size
-    FilterOp(
-      id="n26",
-      meta=OpsMeta(nodeId="n26", inputs=["n25"], sentenceIndex=1),
-      field="Region",
-      group="Asia Pacific"
-    ),
-
-    # remaining regions' market size
-    FilterOp(
-      id="n27",
-      meta=OpsMeta(nodeId="n27", inputs=["n25"], sentenceIndex=1),
-      field="Region",
-      exclude=["Asia Pacific"]
-    ),
-
-    # Difference
-    DiffOp(
-      id="n28",
-      meta=OpsMeta(nodeId="n28", inputs=["n2", "n3"], sentenceIndex=1),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n2",
-      targetB="ref:n3"
-    ),
-    DiffOp(
-      id="n29",
-      meta=OpsMeta(nodeId="n29", inputs=["n5", "n6"], sentenceIndex=1),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n5",
-      targetB="ref:n6"
-    ),
-    DiffOp(
-      id="n30",
-      meta=OpsMeta(nodeId="n30", inputs=["n8", "n9"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n8",
-      targetB="ref:n9"
-    ),
-    DiffOp(
-      id="n31",
-      meta=OpsMeta(nodeId="n31", inputs=["n8", "n9"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n11",
-      targetB="ref:n12"
-    ),
-    DiffOp(
-      id="n32",
-      meta=OpsMeta(nodeId="n32", inputs=["n11", "n12"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n11",
-      targetB="ref:n12"
-    ),
-    DiffOp(
-      id="n33",
-      meta=OpsMeta(nodeId="n33", inputs=["n14", "n15"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n14",
-      targetB="ref:n15"
-    ),
-    DiffOp(
-      id="n34",
-      meta=OpsMeta(nodeId="n34", inputs=["n17", "n18"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n17",
-      targetB="ref:n18"
-    ),
-    DiffOp(
-      id="n35",
-      meta=OpsMeta(nodeId="n35", inputs=["n20", "n21"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n20",
-      targetB="ref:n21"
-    ),
-    DiffOp(
-      id="n36",
-      meta=OpsMeta(nodeId="n36", inputs=["n23", "n24"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n23",
-      targetB="ref:n24"
-    ),
-    DiffOp(
-      id="n37",
-      meta=OpsMeta(nodeId="n37", inputs=["n26", "n27"]),
-      field="Market_Size_Billion_USD",
-      targetA="ref:n23",
-      targetB="ref:n24"
-    ),
-  ],
-  "ops2": [
-    SortOp(
-      id="n38",
-      meta=OpsMeta(nodeId="n38", inputs=[], sentenceIndex=2),
-      field="Market_Size_Billion_USD",
-      order=["asc"]
-    )
-  ],
-  "ops3":[
-    FindExtremumOp(
-      id="n39",
-      meta=OpsMeta(nodeId="n39", inputs=["n28", "n29", "n30", "n31", "n32", "n33", "n34", "n35", "n36", "n37"], sentenceIndex=3),
-      field="Market_Size_Billion_USD",
-      which="min"
-    ),
-  ]
-}
 
 # 다시
 spec_1a6pxfig1xf4oeu3 = {
@@ -3083,3 +2629,132 @@ spec_4twwx65oath7vrkt = {
   ]
 }
 
+spec_1bbe64wpvq06sknm = {
+    "ops": [
+        AverageOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field=""
+        )
+    ],
+    "ops2":[
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2010/11"]
+        ),
+        DiffOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n2",
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2011/12"]
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n1", "n4"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n4",
+        ),
+        FilterOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2012/13"]
+        ),
+        DiffOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n1", "n7"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n7",
+        ),
+        FilterOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2013/14"]
+        ),
+        DiffOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=["n1", "n8"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n8",
+        ),
+        FilterOp(
+            id="n10",
+            meta=OpsMeta(nodeId="n10", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2014/15"]
+        ),
+        DiffOp(
+            id="n11",
+            meta=OpsMeta(nodeId="n11", inputs=["n1", "n10"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n10",
+        ),
+        FilterOp(
+            id="n12",
+            meta=OpsMeta(nodeId="n12", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2015/16"]
+        ),
+        DiffOp(
+            id="n13",
+            meta=OpsMeta(nodeId="n13", inputs=["n1", "n12"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n12",
+        ),
+        FilterOp(
+            id="n14",
+            meta=OpsMeta(nodeId="n14", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2016/17"]
+        ),
+        DiffOp(
+            id="n15",
+            meta=OpsMeta(nodeId="n15", inputs=["n1", "n14"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n14",
+        ),
+        FilterOp(
+            id="n16",
+            meta=OpsMeta(nodeId="n16", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2017/18"]
+        ),
+        DiffOp(
+            id="n17",
+            meta=OpsMeta(nodeId="n17", inputs=["n1", "n16"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n16",
+        ),
+      FilterOp(
+            id="n18",
+            meta=OpsMeta(nodeId="n18", inputs=[], sentenceIndex=2),
+            field="Fiscal Year",
+            include=["2018/19"]
+        ),
+        DiffOp(
+            id="n19",
+            meta=OpsMeta(nodeId="n19", inputs=["n1", "n18"], sentenceIndex=2),
+            field="Number of days in thousands",
+            targetA="ref:n1",
+            targetB="ref:n18",
+        )
+
+    ]
+}
