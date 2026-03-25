@@ -55,9 +55,10 @@ spec_10t8o5vhethzeod1 = {
 spec_11e148qcs7x70t8v = {
     "ops": [
         PairDiffOp(
-            id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
-            by="Race/Ethnicity",
+            id="n1",
+            meta=OpsMeta(nodeId="n1", sentenceIndex=1),
+            by="Period",
+            seriesField="Country",
             field="Share_of_Import_Value",
             groupA="South Korea",
             groupB="France",
@@ -66,8 +67,8 @@ spec_11e148qcs7x70t8v = {
     ],
     "ops2": [
         FilterOp(
-            id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
             field="Share_of_Import_Value",
             operator=">",
             value=0,
@@ -86,16 +87,17 @@ spec_0prhtod4tli879nh = {
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
             by="City",
-            seriesField="Population in millions",
-            field="Year",
-            groupA="2010",
-            groupB="2025",
+            seriesField="Year",
+            field="Population in millions",
+            groupA="2025",
+            groupB="2010",
         )
     ],
     "ops2": [
         FindExtremumOp(
             id="n2",
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Population in millions",
             which="max"
         )
     ]
@@ -107,7 +109,7 @@ spec_0prhtod4tli879nh = {
 2. retrieve value of 2017 and 2018
 3. get the difference of the retrieved values
 """
-spec_0pzdf7hfbxgjghsa = spec_0pzdf7hfbxgjghsa = {
+spec_0pzdf7hfbxgjghsa = {
     "ops":[
         RetrieveValueOp(
             id="n1",
@@ -169,10 +171,11 @@ spec_23wg8zio5ahp40tg = {
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
             by="Year",
+            seriesField="Opinion",
+            field="Percentage",
             groupA="Favor",
             groupB="Oppose",
-            field="Percentage",
-            signed=True
+            signed=False
         ),
     ],
     "ops2": [
@@ -353,47 +356,42 @@ spec_0aj7na7tkqb7iomu = {
 """
 spec_0egzejn5mejtnfdm = {
     "ops": [
-        FilterOp(
+        FindExtremumOp(
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-            group="Scotland"
-        ),
-        FindExtremumOp(
-            id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
             field="SharePercentage",
-            which="max"
+            group="Scotland",
+            which="max",
+
         ),
     ],
     "ops2": [
-        FilterOp(
-            id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
-            group="England & Wales"
-        ),
         FindExtremumOp(
-            id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
             field="SharePercentage",
+            group="England & Wales",
             which="min"
         ),
     ],
     "ops3": [
         CompareOp(
-            id="n5",
-            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
-            targetA="ref:n2",
-            targetB="ref:n4",
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=3),
+            field="SharePercentage",
+            targetA="ref:n1",
+            targetB="ref:n2",
             which="max"
         ),
     ],
     "ops4": [
         DiffOp(
-            id="n6",
-            meta=OpsMeta(nodeId="n6", inputs=["n2", "n4"], sentenceIndex=4),
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1", "n2"], sentenceIndex=4),
             field="SharePercentage",
             targetA="ref:n2",
             targetB="ref:n4",
+            signed=False
         )
     ]
 }
@@ -418,6 +416,7 @@ spec_0gzowodb2py0d1s9 = {
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
             by="Country_Region",
             field="Revenue_Million_USD",
+            seriesField="Country_Region",
             groupA="Thailand",
             groupB="Philippines",
 
@@ -466,6 +465,7 @@ spec_1sf5c8wqw1192q6b = {
         CountOp(
             id="n3",
             meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
+            field="Month",
         )
     ]
 }
@@ -511,33 +511,20 @@ spec_0k7bm9iqewnrzj47 = {
         ),
     ],
     "ops5": [
-        CompareOp(
-            id="n5",
-            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=5),
-            which="min",
-            targetA="ref:n2",
-            targetB="ref:n4",
-        ),
         ScaleOp(
-            id="n6",
-            meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=5),
-            target="ref:n5", factor=2.0
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"], sentenceIndex=5),
+            target="ref:n4",
+            factor=2.0
         )
     ],
     "ops6": [
-        CompareOp(
-            id="n7",
-            meta=OpsMeta(nodeId="n7", inputs=["n2", "n4"], sentenceIndex=6),
-            which="max",
-            targetA="ref:n2",
-            targetB="ref:n4",
-        ),
         CompareBoolOp(
-            id="n8",
-            meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"], sentenceIndex=6),
+            id="n6",
+            meta=OpsMeta(nodeId="n8", inputs=["n2", "n5"], sentenceIndex=6),
             operator=">",
-            targetA="ref:n6",
-            targetB="ref:n7",
+            targetA="ref:n2",
+            targetB="ref:n5",
         ),
     ],
 }
@@ -576,7 +563,7 @@ spec_0opt5fjw2xphdgp2 = {
         CompareOp(
             id="n5",
             meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=2),
-            field="Frequency",
+            field="Share of respondents",
             targetA="ref:n2",
             targetB="ref:n4",
             which="max"
@@ -678,7 +665,8 @@ spec_2kmpy10btl65kr2j = {
         AverageOp(
             id="n2",
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
-            field="Percentage_of_Respondents"
+            field="Percentage_of_Respondents",
+            group="Favorable view of US"
         )
     ]
 }
@@ -752,7 +740,7 @@ spec_0w88bu7qm4ilsqmh = {
 
 # Q: What year is the smallest difference between the two types? (1ar60b8rke2d8e64)
 """
-1. Calculate the rate differences between two types for each year #FIX: "month"
+1. Calculate the rate differences between two types for each year # FIX: "month"
 2. Sort them
 3. Find the minimum value
 """
@@ -780,19 +768,52 @@ spec_1bbe64wpvq06sknm = {'ops1': [AverageOp()], 'ops2': []}
 1. Get the difference between every year
 2. Get the extremum 
 """
-spec_2jromeq5u9lloh1s = {'ops1': [LagDiffOp()], 'ops2': [FindExtremumOp()]}
+spec_2jromeq5u9lloh1s = {
+    "ops": [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Audience_Millions"
+        )
+    ],
+    "ops2": [
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Audience_Millions",
+            which="max"
+        )
+    ]
+}
 
 # Q: Which country has the highest european factor? (13guplcbmfu1tjzu)
 """
 1. Get the sum of germany and italy for each country
 2. Get the country with the highest value
 """
-spec_13guplcbmfu1tjzu = {'ops1': [FilterOp()], 'ops2': [FindExtremumOp()]}
+spec_13guplcbmfu1tjzu = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            group=["Germany – exports", "Italy – exports"],
+        ),
+    ],
+    "ops2": [
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Decrease_in_GDP_Percentage",
+            which="max"
+        )
+    ],
+}
 
-# Q: Which year had the lowest amount of suicides of all ages combined? (0q8vqyb35mbq0efx) # FIX: GroupToStack?
+# Q: Which year had the lowest amount of suicides of all ages combined? (0q8vqyb35mbq0efx) # FIX: GroupToStack? # NOTE: 지금 상태로는 유진님이 적은게 맞는데, 이대로는 정답으로 하기가 어려울 것 같음.
 """
 1. Sum of all the age ranges for every year
 2. Find the extremum (lowest)
+
 """
 spec_0q8vqyb35mbq0efx = {'ops1': [], 'ops2': []}
 
@@ -801,7 +822,23 @@ spec_0q8vqyb35mbq0efx = {'ops1': [], 'ops2': []}
 1. Sort in ascending order by year
 2. find the second lowest
 """
-spec_2o3fyauxv32p571i = {'ops1': [SortOp()], 'ops2': [NthOp()]}
+spec_2o3fyauxv32p571i = {
+    "ops": [
+        SortOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Operating_Profit_Margin",
+            order="asc",
+        )
+    ],
+    "ops2": [
+        NthOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            n=2
+        )
+    ]
+}
 
 # Q: What is the difference between the average of September 1896 until December 1896 and the average of January 1897 until April 1897? (0s6zi9dyw22qo4rp)
 """
@@ -809,14 +846,70 @@ spec_2o3fyauxv32p571i = {'ops1': [SortOp()], 'ops2': [NthOp()]}
 2. calculate the average of jan 1897 until april 1897
 3. compare the two averages
 """
-spec_0s6zi9dyw22qo4rp = {'ops1': [FilterOp(), AverageOp()], 'ops2': [FilterOp(), AverageOp()], 'ops3': [DiffOp()]}
+spec_0s6zi9dyw22qo4rp = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Month/Year",
+            operator="between",
+            value=["Sep 1896", "Dec 1896"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            field="Fatality rate among plague cases"
+        )
+    ],
+    "ops2": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            field="Month/Year",
+            operator="between",
+            value=["Jan 1897", "Apr 1897"]
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+            field="Fatality rate among plague cases"
+        )
+    ],
+    "ops3": [
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+            field="Fatality rate among plague cases",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
 
-# Q: Which year had the second lowest value? (2ebtadc07b7bo277)
+# Q: Which year had the second lowest value? (2ebtadc07b7bo277) # NOTE: 방법 1이 맞는 것 같음. 설명에서 sort라고 했으니, 그렇게 나오는게 맞을듯. 하지만 nth(2)나 min(2)나 같은걸로 처리해야 할듯.
 """
 1. sort the values from lowest to highest
 2. find the second lowest 
 """
-spec_2ebtadc07b7bo277 = {'ops1': [SortOp()], 'ops2': [NthOp()]}
+spec_2ebtadc07b7bo277 = {
+    "ops": [
+        SortOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Average price in US dollars",
+            order="asc",
+        )
+    ],
+    "ops2": [
+        NthOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            n=2
+        )
+
+    ]
+}
+
 
 # Q: If you compare the average value from july 2008 until june 2012 and july 2013 until june 2017, which value is higher? (2jki13q54zizc6i4)
 """
@@ -825,7 +918,7 @@ spec_2ebtadc07b7bo277 = {'ops1': [SortOp()], 'ops2': [NthOp()]}
 3. compare 
 4. find extremum
 """
-spec_2jki13q54zizc6i4 = {'ops1': [FilterOp(), AverageOp()], 'ops2': [FilterOp(), AverageOp()], 'ops3': [CompareOp()], 'ops4': [FindExtremumOp()]}
+spec_2jki13q54zizc6i4 = {'ops1': [FilterOp(), AverageOp()], 'ops2': [FilterOp(), AverageOp()], 'ops3': [CompareOp()], 'ops4': [FindExtremumOp()]} # FIX:
 
 # Q: What is the difference in the average between North America and Latin America? (0rfuaawgi58ajpsv)
 """
@@ -833,24 +926,121 @@ spec_2jki13q54zizc6i4 = {'ops1': [FilterOp(), AverageOp()], 'ops2': [FilterOp(),
 2. Get the average of Latin America
 3. Get the difference between the two average values
 """
-spec_0rfuaawgi58ajpsv = {'ops1': [AverageOp(group="North America")], 'ops2': [AverageOp(group="Latin America")], 'ops3': [DiffOp()]}
+spec_0rfuaawgi58ajpsv = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Region",
+            group="North America"
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            field="Media rights revenue in billion US dollars"
+        )
+    ],
+    "ops2": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            field="Region",
+            group="North America"
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+            field="Media rights revenue in billion US dollars"
+        )
+    ],
+    "ops3": [
+        DiffOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+            field="Media rights revenue in billion US dollars",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
 
-# Q: Which year shows the lowest gap between lending and investment? (0rdpculfpyw3bv5p)
+# Q: Which year shows the lowest gap between lending and investment? (0rdpculfpyw3bv5p) # NOTE: 유진님 n1 diff -> PairDiff가 맞는 것 같음.
 """
 1. Get the difference between lending and investment in every year
 2. Find the year with the smallest value
 """
-spec_0rdpculfpyw3bv5p = {'ops1': [PairDiffOp()], 'ops2': [FindExtremumOp()]}
+spec_0rdpculfpyw3bv5p = {
+    "ops": [
+        DiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Value in billion US dollars",
+            group="Type",
+            by="Year",
+            groupA="Lending",
+            groupB="Investment"
+        )
+    ],
+    "ops2": [
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            group="Type",
+            field="Value in billion US dollars",
+            which=["min"],
+            rank=1
+        )
+    ]
+}
 
-# Q: Which season was above average in both commercial and broadcasting? (10x2rgiqw97wdspi)
+# Q: Which season was above average in both commercial and broadcasting? (10x2rgiqw97wdspi) # NOTE: Average에 group이 있기 때문에 filter 하지 않아도 됨. filter를 넣는다면  average에 group이 없어도 됨.
 """
 1. Find the average of the commercial
 2. Find the average of the broadcasting
 3. Find the season that is above average for both commercial and broadcasting
 """
-spec_10x2rgiqw97wdspi = {'ops1': [AverageOp()], 'ops2': [AverageOp()], 'ops3': [FilterOp(), FilterOp(), FilterOp(), FilterOp()]}
+spec_10x2rgiqw97wdspi = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Revenue_Million_Euros",
+            group="Commercial"
+        ),
+        AverageOp(
+            id="n2",
+            meat=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            field="Revenue_Million_Euros",
+            group="Commercial"
+        )
+    ],
 
-# Q: Which fiscal years' expenditures are below average? (0qz3v0bszsex7jjm)
+    "ops2": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            field="Revenue_Million_Euros",
+            group="Broadcasting"
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
+            field="Revenue_Million_Euros",
+            group="Broadcasting"
+        )
+    ],
+    "ops3": [
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+            field="Revenue_Million_Euros",
+            operator=">",
+            value=["ref:n2", "ref:n4"]
+        )
+    ]
+}
+
+# Q: Which fiscal years' expenditures are below average? (0qz3v0bszsex7jjm) # NOTE: 지금 정답은 유진님이 맞음. pairdiff든 전체 diff하는거 만들어야 할듯.
 """
 1. Determine average
 2. Compare each year's value with the average
@@ -858,51 +1048,248 @@ spec_10x2rgiqw97wdspi = {'ops1': [AverageOp()], 'ops2': [AverageOp()], 'ops3': [
 """
 spec_0qz3v0bszsex7jjm = {'ops1': [AverageOp()], 'ops2': [], 'ops3': [FilterOp()]}
 
-# Q: What is the difference between the maximum and minimum gap between the two groups? (28bxxhd6omv2l2h1) # FIX: 설명 이상함.
+# Q: What is the difference between the maximum and minimum gap between the two groups? (28bxxhd6omv2l2h1) # FIX: 설명 이상함. 일단 설명대로 만듦
 """
 1. calculate the difference for each value
 2. find the maximum value
 """
-spec_28bxxhd6omv2l2h1 = {'ops1': [PairDiffOp()], 'ops2': [FindExtremumOp()]}
+spec_28bxxhd6omv2l2h1 = {
+    "ops": [
+        PairDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            by="Year",
+            seriesField="Region",
+            field="Life expectancy in years",
+            groupA="Canada",
+            groupB="Newfoundland and Labrador"
+        )
+    ],
+    "ops2": [
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Life expectancy in years",
+            which="max"
+        )
+    ]
+}
 
-# Q: In 2002 and 2017, which year shows the highest gap between two opinion? (29rxoltwhongoday)
+# Q: In 2002 and 2017, which year shows the highest gap between two opinion? (29rxoltwhongoday) # NOTE: 질문의 해석이 다름. 내 생각엔 2002, 2017 둘만 비교하는게 맞는 것 같음. Between이 아니고 in이기 때문에.
 """
 1. calculate the difference in 2002 and 2017
 2. find the year which has the bigger difference
 """
-spec_29rxoltwhongoday = {'ops1': [DiffOp(), DiffOp()], 'ops2': [FindExtremumOp()]}
+spec_29rxoltwhongoday = {
+    'ops1': [
+        RetrieveValueOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Percentage",
+            target="2002",
+            group="Dissatisfied"
+        ),
+        RetrieveValueOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            field="Percentage",
+            target="2002",
+            group="Satisfied"
+        ),
+        DiffOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=1),
+            field="Percentage",
+            targetA="ref:n1",
+            targetB="ref:n2"
+        ),
+        RetrieveValueOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=1),
+            field="Percentage",
+            target="2002",
+            group="Dissatisfied"
+        ),
+        RetrieveValueOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=1),
+            field="Percentage",
+            target="2017",
+            group="Satisfied"
+        ),
+        DiffOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n4", "n5"], sentenceIndex=1),
+            field="Percentage",
+            targetA="ref:n4",
+            targetB="ref:n5"
+        ),
+    ],
+    'ops2': [
+        FindExtremumOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n3", "n6"], sentenceIndex=2),
+            field="Percentage",
+        )
+    ]
+}
 
 # Q: How many years has Russia had higher favorability than the US? (2eiyyw562tcvjypp)
 """
 1. calculate the difference between Russia and the US
 2. count the number of years that Russia is higher than the US
 """
-spec_2eiyyw562tcvjypp = {'ops1': [PairDiffOp(signed=True)], 'ops2': [FilterOp(), CountOp()]}
+spec_2eiyyw562tcvjypp = {
+    "ops": [
+        PairDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Favorable_View_Percentage",
+            by="Year",
+            seriesField="Favorability_Direction",
+            groupA="Russia favorability in US",
+            groupB="US favorability in Russia",
+            signed=True,
+        ),
+    ],
+    "ops2": [
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Favorable_View_Percentage",
+            operator=">",
+            value=0,
+        ),
+        CountOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
+            field="Year"
+        )
+    ]
+}
 
-# Q: Which of the most recent years is the value of the EU 5-country media with y-axis values between 51 and 61? (1h4rj9i2jtzq589y)
+# Q: Which of the most recent years is the value of the EU 5-country media with y-axis values between 51 and 61? (1h4rj9i2jtzq589y) # NOTE: 설명할게 없으면 안보는것도 필요할듯? 첫 번째 문장 (아니면 문장 합치는 것도 괜찮을듯) # NOTE: 유진님 문장 3개만 있음.
+# NOTE: 질문이 이상함
 """
 1. Check y-axis number
 2. Check the points between 51 and 61
 3. Check the year of values corresponding to the EU 5-country media between 51 and 61 
 4. Choose the largest year
 """
-spec_1h4rj9i2jtzq589y = {'ops1': [], 'ops2': [], 'ops3': [FilterOp()], 'ops4': [FindExtremumOp()]}
+spec_1h4rj9i2jtzq589y = {
+    'ops1': [],
+    'ops2': [],
+    'ops3': [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=["n1"], sentenceIndex=3),
+            field="Year",
+            operator="between",
+            value=["51", "61"],
+        )
+    ],
+    'ops4': [
+        FindExtremumOp()
+    ]
+}
 
-# Q: What is the average value for each service area in the year when the data center's revenue was highest? (0gf8ugj84bs1ko2k)
+# Q: What is the average value for each service area in the year when the data center's revenue was highest? (0gf8ugj84bs1ko2k) # NOTE: 설명이 약간 부족함. # 유진님이랑 다름 (오류 있음. n1 sentenceIndex)
 """
 1. Check the graph for the data center with the highest value.
 2. Check the value for each service area.
 3. Calculate the average.
 """
-spec_0gf8ugj84bs1ko2k = {'ops1': [FilterOp(), FindExtremumOp()], 'ops2': [FilterOp()], 'ops3': [AverageOp()]}
+spec_0gf8ugj84bs1ko2k = {
+    'ops1': [
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Revenue_Million_USD",
+            group="Data Centers",
+            which="max",
+        )
+    ],
+    'ops2': [
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            field="Revenue_Million_USD",
+            target="2022",
+            group="Data Centers",
+        ),
+        RetrieveValueOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
+            field="Revenue_Million_USD",
+            target="2022",
+            group="Cloud",
+        ),
+        RetrieveValueOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=2),
+            field="Revenue_Million_USD",
+            target="2022",
+            group="BPO",
+        )
+    ],
+    'ops3': [
+        AverageOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n3", "n4", "n5"], sentenceIndex=3),
+            field="Revenue_Million_USD",
+        )
+    ]
+}
 
-# Q: What is the sum of the Confidence in U.S. present values for the period in which the favorite view of the U.S. is the lowest? (14jt6jor7iknkjkl) # FIX: Present -> President
+# Q: What is the sum of the Confidence in U.S. present values for the period in which the favorite view of the U.S. is the lowest? (14jt6jor7iknkjkl) # FIX: Present -> President # 이건 정답을 만들 수 없을듯?
+# NOTE: 유진님이랑 다름
+# NOTE: check라는걸 retrieveValue로 볼지? 아니면 Filter만으로 괜찮을지?
 """
 1. Check the section with the lowest favorite view of U.S. value (2009, 2010, 2011)
 2. Check Confidence in U.S. present value corresponding to section 1
 3. Add all values of number 2
 """
-spec_14jt6jor7iknkjkl = {'ops1': [FilterOp()], 'ops2': [FilterOp()], 'ops3': [SumOp()]}
+spec_14jt6jor7iknkjkl = {
+    'ops1': [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Year",
+            operator="between",
+            value=["2009", "2011"]
+        )
+    ],
+    'ops2': [
+        RetrieveValueOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Percentage",
+            target="2009",
+            group="Confidence in US President"
+        ),
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1"], sentenceIndex=2),
+            field="Percentage",
+            target="2010",
+            group="Confidence in US President"
+        ),
+        RetrieveValueOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"], sentenceIndex=2),
+            field="Percentage",
+            target="2011",
+            group="Confidence in US President"
+        )
+    ],
+    'ops3': [
+        SumOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n3", "n4"], sentenceIndex=3),
+            field="Percentage",
+        )
+    ]
+}
 
 # Q: What is the difference between the average of values corresponding to Poor and the average of values corresponding to Good? (0dglnk2wbf5ll15t)
 """
@@ -912,9 +1299,48 @@ spec_14jt6jor7iknkjkl = {'ops1': [FilterOp()], 'ops2': [FilterOp()], 'ops3': [Su
 4. Obtaining the mean of the values found in number 3
 5. Find the difference between the two mean values
 """
-spec_0dglnk2wbf5ll15t = {'ops1': [FilterOp()], 'ops2': [AverageOp()], 'ops3': [FilterOp()], 'ops4': [AverageOp()], 'ops5': [DiffOp()]}
+spec_0dglnk2wbf5ll15t = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            group="Poor"
+        )
+    ],
+    "ops2": [
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Share_of_Respondents"
+        )
+    ],
+    "ops3": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
+            group="Good"
+        )
+    ],
+    "ops4": [
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=4),
+            field="Share_of_Respondents"
+        )
+    ],
+    "ops5": [
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=5),
+            field="Share_of_Respondents",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
 
 # Q: What is the sum of the year when the Ease of Doing Business score is the second largest and the year when the Ease of Doing Business score is the second smallest? (0ix8hz9qvakto18g)
+# NOTE: 정답 만들 수 없을 것 같음.
 """
 1. Check the top of the graph
 2. Then check the value of the dot above
@@ -931,32 +1357,117 @@ spec_0ix8hz9qvakto18g = {'ops1': [], 'ops2': [], 'ops3': [], 'ops4': [], 'ops5':
 2. Add all the values
 3. Divide by six.
 """
-spec_0egdxqun1m2n9k4z = {'ops1': [FilterOp()], 'ops2': [SumOp()], 'ops3': [ScaleOp()]}
+spec_0egdxqun1m2n9k4z = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            filed="Year",
+            operator="between",
+            value=["2006", "2011"]
+        )
+    ],
+    "ops2": [
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Revenue multiple",
+        )
+    ],
+    "ops3": [
+        ScaleOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
+            target="ref:n2",
+            factor=1 / 6,
+        )
+    ]
+}
 
-# Q: What is the average of Season's ticket prices with a ticket price of $60 or less? (0gvrmm8qbn6o1vya)
+# Q: What is the average of Season's ticket prices with a ticket price of $60 or less? (0gvrmm8qbn6o1vya) # NOTE: 유진님이랑 다름. 1번 문장에서 Filter를 만들 수는 없을듯?
 """
 1. Identify the 60 line on the Y-axis.
 2. Identify the bar graphs with values under 60.
 3. Calculate the average of each bar.
 """
-spec_0gvrmm8qbn6o1vya = {'ops1': [], 'ops2': [FilterOp()], 'ops3': [AverageOp()]}
+spec_0gvrmm8qbn6o1vya = {
+    "ops": [],
+    "ops2": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=2),
+            field="Season",
+            operator="<",
+            value=60
+        )
+    ],
+    "ops3": [
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=3),
+            field="Average ticket price in US dollars"
+        )
+    ]
+}
 
 # Q: What is the average of the values in the period in which the Unemployment rate value falls for more than two years? (0roec4s0drcyiuz4)
+# NOTE: 정답 만들기 좀 까다로움.
 """
 1. Check for sections where prices have fallen for more than two years
 2. Check all values for each year from Quarter obtained by 1
 3. Finds the average of the values obtained in number 2 
 """
-spec_0roec4s0drcyiuz4 = {'ops1': [LagDiffOp()], 'ops2': [], 'ops3': []}
+spec_0roec4s0drcyiuz4 = {
+    'ops1': [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Season",
+            signed=True
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            field="Quarter",
+            between=["Q1 2019", "Q2 2020"]
+        )
+    ],
+    'ops2': [],
+    'ops3': [
+        AverageOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
+            field="Unemployment rate (%)"
+        )
+    ]
+}
 
 # Q: What is the average of the sales values of a company with a sales volume in million units of 60 or more? (0eq4w2wsl864mhcj)
 """
 1. Confirmation of a company with a Sales value of more than 60
 2. Finds the average of the values found in number 1
 """
-spec_0eq4w2wsl864mhcj = {'ops1': [], 'ops2': []}
+spec_0eq4w2wsl864mhcj = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Sales volume in million units",
+            operator=">",
+            value="60"
+        )
+    ],
+    "ops2": [
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
+            field="Sales volume in million units"
+        )
+    ]
+}
 
 # Q: Which year has the second largest difference between 65 years and older and 15–64 years? (0g0xma0b0k29lk5j)
+# NOTE: Stacked bar chart PairDiff 할 때 Stack to group 만든 다음에 정답 만들기
 """
 1. Check the graph with the second smallest value of 65 years and old and check the value 
 2. Check the graph with the second largest value of 15–64 years and check the value
@@ -964,7 +1475,7 @@ spec_0eq4w2wsl864mhcj = {'ops1': [], 'ops2': []}
 """
 spec_0g0xma0b0k29lk5j = {'ops1': [], 'ops2': [], 'ops3': []}
 
-# Q: Which year has the average of the values corresponding to 2018 or the larger value corresponding to 2020? (0fhm43s0j7glca29)
+# Q: Which year has the average of the values corresponding to 2018 or the larger value corresponding to 2020? (0fhm43s0j7glca29) # 유진님이랑 다름 (Average 만드는 부분)
 """
 1. Check all values for 2018
 2. Calculated the mean
@@ -972,9 +1483,45 @@ spec_0g0xma0b0k29lk5j = {'ops1': [], 'ops2': [], 'ops3': []}
 4. Calculated the mean
 5. Determine which year has the greater of the two means
 """
-spec_0fhm43s0j7glca29 = {'ops1': [], 'ops2': [], 'ops3': [], 'ops4': [], 'ops5': []}
+spec_0fhm43s0j7glca29 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            group="2018"
+        )
+    ],
+    "ops2": [
+        AverageOp(
+            nodeId="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Revenue in billion US dollars",
+        )
+    ],
+    "ops3": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
+            group="2020"
+        )
+    ],
+    "ops4": [
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=4),
+            field="Revenue in billion US dollars",
+        )
+    ],
+    "ops5": [
+        FindExtremumOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=5),
+        )
+    ]
+}
 
 # Q: What is the difference between the average of surgical values in European countries and the average of surgical values in Asian countries? (0gacqohbzj07n25s)
+# NOTE: 유진님이랑 다름 (유럽 국가 기준?) 터키 같은 애들은 애매해서 어디에 있어도 정답처리 해야 할듯?
 """
 1. European countries identified
 2. Obtain the average of the surgical values of European countries
@@ -982,39 +1529,249 @@ spec_0fhm43s0j7glca29 = {'ops1': [], 'ops2': [], 'ops3': [], 'ops4': [], 'ops5':
 4. Find the average of the surgical values of Asian countries
 5. Subtract smaller values from larger values
 """
-spec_0gacqohbzj07n25s = {'ops1': [], 'ops2': [], 'ops3': [], 'ops4': [], 'ops5': []}
+spec_0gacqohbzj07n25s = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Country",
+            include=["France", "Germany", "Italy", "Russia", "Turkey"],
+        )
+    ],
+    "ops2": [
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Number of procedures"
+        )
+    ],
+    "ops3": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
+            field="Country",
+            include=["India", "Japan"],
+        )
+    ],
+    "ops4": [
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=4),
+            field="Number of procedures"
+        )
+    ],
+    "ops5": [
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], senteceIndex=5),
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
 
-# Q: What is the sum of the y-values ​​for the period in which the y-axis value increased most sharply for two or more consecutive years? (1c80b6i7wdu3m1ir)
+# Q: What is the sum of the y-values for the period in which the y-axis value increased most sharply for two or more consecutive years? (1c80b6i7wdu3m1ir)
+# NOTE 유진님이랑 정답 다름
 """
 1. Identify lines that trend upward for two or more years.
 2. Find the difference between the starting and ending values.
 3. Identify the line with the largest value.
-4. Add all values ​​corresponding to number 3.
+4. Add all values corresponding to number 3.
 """
-spec_1c80b6i7wdu3m1ir = {'ops1': [], 'ops2': [], 'ops3': [], 'ops4': []}
+spec_1c80b6i7wdu3m1ir = {
+    'ops1': [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Year on year percentage change (%)"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            field="Year",
+            between=["1996", "1998"]
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
+            field="Year",
+            between=["1999", "2001"]
+        )
+    ],
+    'ops2': [
+        DiffOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n2"], sentenceIndex=2),
+            field="Year on year percentage change (%)",
+            targetA="1996",
+            targetB="1998"
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n3"], sentenceIndex=2),
+            field="Year on year percentage change (%)",
+            targetA="1999",
+            targetB="2001"
+        )
+    ],
+    'ops3': [
+        FindExtremumOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n4", "n5"], sentenceIndex=3),
+            field="Year on year percentage change (%)",
+            which="max"
+        )
+    ],
+    'ops4': [
+        SumOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n3"], sentenceIndex=4),
+            field="Year on year percentage change (%)",
+        )
+    ]
+} #cur
 
 # Q: What is the difference between the largest value in Germany and the smallest value in the U.S. between 2010 and 2015? (1k8qhmg9rui7gtzh)
+# NOTE: 이건 filter 순서 바뀌어도 맞는 걸로 해야 함.
 """
 1. Find the largest value in Germany between 2010 and 2015.
 2. Find the smallest value in the U.S. between 2010 and 2015.
 3. Subtract value 2 from value 1.
 """
-spec_1k8qhmg9rui7gtzh = {'ops1': [], 'ops2': [], 'ops3': []}
+spec_1k8qhmg9rui7gtzh = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Year",
+            operator="between",
+            value=["2010", "2015"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            field="Favorable_View_Percentage",
+            group="Germany"
+        ),
+        FindExtremumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
+            fiedl="Favorable_View_Percentage",
+            which="max"
+        )
+    ],
+    "ops2": [
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
+            field="Year",
+            operator="between",
+            value=["2010", "2015"]
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=2),
+            field="Favorable_View_Percentage",
+            group="US"
+        ),
+        FindExtremumOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=[], sentenceIndex=2),
+            field="Favorable_View_Percentage",
+            which="min"
+        )
+    ],
+    "ops3": [
+        DiffOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n3", "n6"], sentenceIndex=3),
+            field="Favorable_View_Percentage",
+            targetA="ref:n3",
+            targetB="ref:n6"
+        )
+    ]
+}
 
 # Q: What is the Male value in the category with the second-lowest Female share of employees? (0ihx2vzdsej883sq)
+# NOTE: 유진님이랑 다름
 """
 1. Check the second-lowest Female value.
 2. Check the Male value in that Category.
 """
-spec_0ihx2vzdsej883sq = {'ops1': [], 'ops2': []}
+spec_0ihx2vzdsej883sq = {
+    "obs": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Share of employees",
+            group="Female"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
+            field="Share of employees",
+            which="min",
+            rank=2
+        )
+    ],
+    "obs2": [
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
+            field="Share of employees",
+            target="Overall",
+            group="Male"
+        )
+    ]
+}
 
 # Q: What is the difference between the largest and smallest values between 2010 and 2019? (0fh0emp095qhq3ag)
+# NOTE: 유진님이랑 다름 (약간, n5 순서?)
 """
 1. Check the highest bar graph between 2010 and 2019 and find the value
 2. Check the lowest bar graph between 2010 and 2019 and find the value
 3. Subtract value 2 from value 1
 """
-spec_0fh0emp095qhq3ag = {'ops1': [], 'ops2': [], 'ops3': []}
+spec_0fh0emp095qhq3ag = {
+    "obs": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Number of victims",
+            operator="between",
+            value=["2010", "2019"]
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            field="Number of victims",
+            which="max"
+        )
+    ],
+    "obs2": [
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            field="Number of victims",
+            operator="between",
+            value=["2010", "2019"]
+        ),
+        FindExtremumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
+            field="Number of victims",
+            which="min"
+        )
+    ],
+    "ops3": [
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
 
 # Q: For which year was the difference between the average age at marriage for men and women the lowest? (0k75gqf8ckjikdym)
 """
