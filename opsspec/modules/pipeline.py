@@ -5,6 +5,7 @@ import json
 import logging
 import math
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime
@@ -73,6 +74,20 @@ def _create_debug_session_dir() -> Path:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_human_abstracted_json(path: Path, payload: Any) -> None:
+    """Write human abstracted ops spec with compact one-line meta objects."""
+    text = json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2)
+    meta_pattern = re.compile(r'"meta": \{\n(?P<body>(?:\s+"[^"]+": .*?(?:,\n|\n))+?)\s+\}')
+
+    def _collapse_meta(match: re.Match[str]) -> str:
+        body = match.group("body")
+        parts = [line.strip() for line in body.splitlines() if line.strip()]
+        return f'"meta": {{ {" ".join(parts)} }}'
+
+    collapsed = meta_pattern.sub(_collapse_meta, text)
+    path.write_text(collapsed + "\n", encoding="utf-8")
 
 
 def _escape_dot_label(text: str) -> str:
@@ -264,6 +279,7 @@ def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
         ("02_inventory.json", "inventory"),
         ("00_trace.md", "trace_md"),
         ("90_final_grammar.json", "final_grammar"),
+        ("92_human_abstracted_ops_spec.json", "human_abstracted_ops_spec"),
         ("95_draw_plan.json", "draw_plan"),
         ("99_error.json", "error"),
     ):
@@ -272,6 +288,8 @@ def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
             continue
         if filename.endswith(".md"):
             Path(session_dir / filename).write_text(str(data), encoding="utf-8")
+        elif key == "human_abstracted_ops_spec":
+            _write_human_abstracted_json(session_dir / filename, data)
         else:
             _write_json(session_dir / filename, data)
 
@@ -308,6 +326,29 @@ def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
                 )
 
     return session_dir
+
+
+def _build_human_abstracted_ops_spec(ops_spec: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a compact, human-readable debug artifact from ops_spec groups."""
+    abstracted: Dict[str, Any] = {}
+    for group_name, ops in (ops_spec or {}).items():
+        if not isinstance(ops, list):
+            continue
+        compact_ops: List[Dict[str, Any]] = []
+        for op in ops:
+            if not isinstance(op, dict):
+                continue
+            compact = dict(op)
+            compact.pop("chartId", None)
+            meta = compact.get("meta")
+            if isinstance(meta, dict):
+                meta_compact = dict(meta)
+                meta_compact.pop("source", None)
+                meta_compact.pop("view", None)
+                compact["meta"] = meta_compact
+            compact_ops.append(prune_nulls(compact))
+        abstracted[group_name] = compact_ops
+    return abstracted
 
 
 def _group_name(sentence_index: int) -> str:
@@ -1087,6 +1128,9 @@ class OpsSpecPipeline:
         # debug=True 인 경우에만 draw_plan/trace 객체가 API 응답에 포함됨.
         debug_payloads["steps"] = steps_debug
         debug_payloads["final_grammar"] = result.model_dump(mode="json", by_alias=True)
+        debug_payloads["human_abstracted_ops_spec"] = _build_human_abstracted_ops_spec(
+            debug_payloads["final_grammar"].get("ops_spec", {})
+        )
         debug_payloads["pre_schedule_grammar"] = {
             group: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
             for group, ops in pre_schedule_groups.items()

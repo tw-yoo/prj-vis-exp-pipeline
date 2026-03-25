@@ -74,7 +74,7 @@ class LagDiffOp(BaseOpFields):
     field: Optional[str] = None  # 차이를 계산할 수치 필드명(보통 y축)
     group: Optional[str] = None  # group/series 이름
     order: Optional[Literal["asc", "desc"]] = None  # x축(시간) 순서 방향
-    absolute: Optional[bool] = None  # 절대값 차이로 변환할지
+    signed: Optional[bool] = None  # 절대값 차이로 변환할지
 
 
 class PairDiffOp(BaseOpFields):

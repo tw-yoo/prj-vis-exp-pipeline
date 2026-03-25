@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import json
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from opsspec.core.models import ChartContext
 from opsspec.core.recursive_models import OpTask
-from opsspec.modules.pipeline import OpsSpecPipeline, _select_next_task
+from opsspec.modules.pipeline import (
+    OpsSpecPipeline,
+    _build_human_abstracted_ops_spec,
+    _persist_debug_bundle,
+    _select_next_task,
+)
 
 
 class RecursivePipelineTest(unittest.TestCase):
@@ -86,6 +93,96 @@ class RecursivePipelineTest(unittest.TestCase):
         selected, warnings = _select_next_task(remaining, executed_node_ids=set())
         self.assertEqual(str(selected.taskId), "o2")
         self.assertTrue(any("fallback" in warning for warning in warnings))
+
+    def test_build_human_abstracted_ops_spec_strips_debug_fields(self) -> None:
+        ops_spec = {
+            "ops": [
+                {
+                    "op": "filter",
+                    "id": "n1",
+                    "chartId": "chart-a",
+                    "meta": {
+                        "nodeId": "n1",
+                        "inputs": [],
+                        "sentenceIndex": 1,
+                        "source": "recursive_step=1;taskId=o1",
+                        "view": {"phase": 1},
+                    },
+                    "field": "Year",
+                    "operator": ">",
+                    "value": 2010,
+                    "precision": None,
+                }
+            ],
+            "ops2": [
+                {
+                    "op": "diff",
+                    "id": "n2",
+                    "meta": {
+                        "nodeId": "n2",
+                        "inputs": ["n1"],
+                        "sentenceIndex": 2,
+                        "source": "recursive_step=2;taskId=o2",
+                        "view": {"phase": 2},
+                    },
+                    "field": "Revenue_Million_Euros",
+                    "targetA": "ref:n1",
+                    "targetB": 100,
+                    "signed": False,
+                }
+            ],
+        }
+
+        abstracted = _build_human_abstracted_ops_spec(ops_spec)
+
+        self.assertEqual(list(abstracted.keys()), ["ops", "ops2"])
+        self.assertEqual(abstracted["ops"][0]["id"], "n1")
+        self.assertEqual(abstracted["ops"][0]["meta"]["nodeId"], "n1")
+        self.assertEqual(abstracted["ops"][0]["meta"]["inputs"], [])
+        self.assertEqual(abstracted["ops"][0]["meta"]["sentenceIndex"], 1)
+        self.assertNotIn("chartId", abstracted["ops"][0])
+        self.assertNotIn("source", abstracted["ops"][0]["meta"])
+        self.assertNotIn("view", abstracted["ops"][0]["meta"])
+        self.assertNotIn("precision", abstracted["ops"][0])
+        self.assertEqual(abstracted["ops"][0]["field"], "Year")
+        self.assertEqual(abstracted["ops"][0]["operator"], ">")
+        self.assertEqual(abstracted["ops"][0]["value"], 2010)
+
+        self.assertEqual(abstracted["ops2"][0]["id"], "n2")
+        self.assertEqual(abstracted["ops2"][0]["meta"]["nodeId"], "n2")
+        self.assertEqual(abstracted["ops2"][0]["meta"]["inputs"], ["n1"])
+        self.assertEqual(abstracted["ops2"][0]["meta"]["sentenceIndex"], 2)
+        self.assertEqual(abstracted["ops2"][0]["targetA"], "ref:n1")
+        self.assertEqual(abstracted["ops2"][0]["targetB"], 100)
+        self.assertFalse(abstracted["ops2"][0]["signed"])
+
+    def test_persist_debug_bundle_writes_human_abstracted_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            session_dir = Path(tmp) / "session"
+            session_dir.mkdir(parents=True, exist_ok=True)
+            payloads = {
+                "human_abstracted_ops_spec": {
+                    "ops": [
+                        {
+                            "op": "average",
+                            "id": "n1",
+                            "meta": {"nodeId": "n1", "inputs": [], "sentenceIndex": 1},
+                            "field": "Revenue_Million_Euros",
+                        }
+                    ]
+                }
+            }
+
+            with patch("opsspec.modules.pipeline._create_debug_session_dir", return_value=session_dir):
+                out_dir = _persist_debug_bundle(payloads)
+
+            self.assertEqual(out_dir, session_dir)
+            out_file = session_dir / "92_human_abstracted_ops_spec.json"
+            self.assertTrue(out_file.exists())
+            text = out_file.read_text(encoding="utf-8")
+            self.assertIn('"meta": { "nodeId": "n1", "inputs": [], "sentenceIndex": 1 }', text)
+            parsed = json.loads(text)
+            self.assertEqual(parsed, payloads["human_abstracted_ops_spec"])
 
     def test_recursive_chain_with_scalar_ref(self) -> None:
         inventory_payload = {
@@ -179,6 +276,59 @@ class RecursivePipelineTest(unittest.TestCase):
         self.assertTrue(str(op1.meta.source).startswith("recursive_step=1;"))
         self.assertTrue(str(op2.meta.source).startswith("recursive_step=2;"))
         self.assertTrue(str(op3.meta.source).startswith("recursive_step=3;"))
+
+    def test_generate_includes_human_abstracted_payload_for_debug_bundle(self) -> None:
+        inventory_payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "average",
+                    "sentenceIndex": 1,
+                    "mention": "average revenue for Broadcasting",
+                    "paramsHint": {"field": "@primary_measure", "group": "Broadcasting"},
+                },
+                {
+                    "taskId": "o2",
+                    "op": "filter",
+                    "sentenceIndex": 2,
+                    "mention": "revenue greater than average",
+                    "paramsHint": {"field": "@primary_measure", "operator": ">", "value": "ref:n1"},
+                },
+            ],
+            "warnings": [],
+        }
+        step_payloads = [
+            {"pickTaskId": "o1", "op_spec": {"op": "average", "field": "@primary_measure", "group": "Broadcasting"}, "inputs": []},
+            {"pickTaskId": "o2", "op_spec": {"op": "filter", "field": "@primary_measure", "operator": ">", "value": "ref:n1"}, "inputs": ["n1"]},
+        ]
+
+        with (
+            patch("opsspec.modules.pipeline.build_chart_context", return_value=(self.context, [], self.rows_preview)),
+            patch("opsspec.modules.pipeline.run_inventory_module", return_value=inventory_payload),
+            patch("opsspec.modules.pipeline.run_step_compose_module", side_effect=step_payloads),
+            patch("opsspec.modules.pipeline.build_draw_ops_spec", return_value={}),
+            patch("opsspec.modules.pipeline.export_draw_plan_to_public", return_value=Path("/tmp/draw_plan.json")),
+            patch("opsspec.modules.pipeline._persist_debug_bundle", return_value=Path("/tmp/debug_bundle")) as persist_debug,
+        ):
+            pipeline = self._pipeline()
+            result = pipeline.generate(
+                question="q",
+                explanation="e",
+                vega_lite_spec={},
+                data_rows=self.rows,
+                request_id="req",
+                debug=False,
+            )
+
+        self.assertTrue(persist_debug.called)
+        payload = persist_debug.call_args.args[0]
+        self.assertIn("human_abstracted_ops_spec", payload)
+
+        expected = _build_human_abstracted_ops_spec(payload["final_grammar"]["ops_spec"])
+        self.assertEqual(payload["human_abstracted_ops_spec"], expected)
+        self.assertEqual(list(payload["human_abstracted_ops_spec"].keys()), list(result.ops_spec.keys()))
+        self.assertEqual(len(payload["human_abstracted_ops_spec"]["ops"]), len(result.ops_spec["ops"]))
+        self.assertEqual(len(payload["human_abstracted_ops_spec"]["ops2"]), len(result.ops_spec["ops2"]))
 
     def test_find_extremum_with_rank_is_parsed_and_executed(self) -> None:
         inventory_payload = {
