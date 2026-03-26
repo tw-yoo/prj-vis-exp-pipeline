@@ -38,8 +38,8 @@
 `nlp_server`는 **(question + explanation) 자연어 텍스트**와 **Vega-Lite spec + data rows**를 입력으로 받아, 최종적으로 **OpsSpec(=grammar)** DAG를 생성해서 반환하는 서버입니다.
 
 - 출력 OpsSpec은 “legacy operation set(비-드로우)” 기반이며, 각 op에 `meta.nodeId` / `meta.inputs`가 포함되어 DAG를 복원할 수 있습니다.
-- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **최소 응답**(opsSpec group map만)으로 내려갑니다:
-  - `{ "ops": [...], "ops2": [...], ... }`
+- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **opsSpec group map + draw_plan**을 함께 반환합니다:
+  - `{ "ops": [...], "ops2": [...], ..., "draw_plan": { "ops": [ { "op":"draw", ... } ], ... } }`
 
 ---
 
@@ -65,7 +65,8 @@
 
 4. **디버깅 번들 저장 + 트리 시각화**
    - **모든 요청(성공/실패 공통)** 에서 `opsspec/debug/<MMddhhmm>/`에 단계별 JSON을 저장합니다.
-     - `debug=true`일 때 추가로 draw_plan 생성 + API 응답에 `trace` 객체 포함.
+     - draw_plan은 `/generate_grammar` 응답에 항상 포함됩니다.
+     - `trace`가 필요하면 `/run_module_trace`를 사용합니다.
    - final OpsSpec을 DOT(+가능하면 SVG/PNG)로 렌더링해서 저장합니다.
 
 ### 하지 않는 일
@@ -89,7 +90,7 @@ Endpoint 구현:
 주요 엔드포인트:
 - `GET /health`
 - `GET /op_registry` (op 계약/스키마 힌트)
-- `POST /generate_grammar` (recursive pipeline, 최소 응답)
+- `POST /generate_grammar` (recursive pipeline, opsSpec + draw_plan 응답)
 - `POST /run_module_trace` (inventory + steps + ops_spec + trace 반환)
 - `POST /run_python_plan` (시나리오 파일로 grammar+draw plan 생성)
 - `POST /canonicalize_opsspec` (별도 유틸; pipeline 내부에서는 id 재작성 canonicalize를 사용하지 않음)
@@ -161,7 +162,7 @@ Cross-node scalar reference:
 ## 6) Debug 번들(연구 재현성)
 
 **모든 요청(성공/실패)** 에서 번들을 저장합니다. 실패 시 `99_error.json`을 포함하며, 성공 시에는 모든 단계 JSON + trace 마크다운이 남습니다.
-`debug=true`인 경우에는 추가로 draw_plan이 생성되고 API 응답에 `trace` 객체가 포함됩니다.
+`/generate_grammar`는 draw_plan을 항상 포함해 응답합니다. `trace`는 `/run_module_trace` 응답에서 확인합니다.
 
 저장 위치:
 - `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/debug/<MMddhhmm>/`

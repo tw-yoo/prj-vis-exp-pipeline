@@ -73,3 +73,11 @@ test.csv
 expert_drawing_util.py
 validation.py
 example.csv
+
+opsspec/tests/eval_results.json
+opsspec/tests/eval_results_human.json
+opsspec/tests/taewon_test.py
+opsspec/tests/test_grammar_taewon_human.py
+opsspec/tests/test_temp1.py
+opsspec/tests/test_temp2.py
+opsspec/tests/test_yugin_chatgpt.py

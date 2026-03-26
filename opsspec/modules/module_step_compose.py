@@ -20,6 +20,7 @@ def render_step_compose_prompt(
     shared_rules: str,
     question: str,
     explanation: str,
+    current_task: Dict[str, JsonValue],
     remaining_tasks: List[Dict[str, JsonValue]],
     available_nodes: List[Dict[str, JsonValue]],
     chart_context: Dict[str, JsonValue],
@@ -32,6 +33,7 @@ def render_step_compose_prompt(
         shared_rules=shared_rules,
         question=question,
         explanation=explanation,
+        current_task_json=json.dumps(current_task, ensure_ascii=True, indent=2),
         remaining_tasks_json=json.dumps(remaining_tasks, ensure_ascii=True, indent=2),
         available_nodes_json=json.dumps(available_nodes, ensure_ascii=True, indent=2),
         chart_context_json=json.dumps(chart_context, ensure_ascii=True, indent=2),
@@ -51,6 +53,7 @@ def run_step_compose_module(
     shared_rules_path: str,
     question: str,
     explanation: str,
+    current_task: Dict[str, JsonValue],
     remaining_tasks: List[Dict[str, JsonValue]],
     available_nodes: List[Dict[str, JsonValue]],
     chart_context: Dict[str, JsonValue],
@@ -66,6 +69,7 @@ def run_step_compose_module(
         shared_rules=shared_rules,
         question=question,
         explanation=explanation,
+        current_task=current_task,
         remaining_tasks=remaining_tasks,
         available_nodes=available_nodes,
         chart_context=chart_context,
@@ -76,7 +80,8 @@ def run_step_compose_module(
     )
     system_prompt = (
         "You are the Step-Compose module. "
-        "Pick the next executable task and propose exactly one operation spec for it. "
+        "The pipeline already selected the current task. "
+        "Propose exactly one operation spec for that task. "
         "Return strict JSON only."
     )
     parsed = llm.complete(
@@ -95,4 +100,3 @@ def run_step_compose_module(
             "shared_rules_sha256": _sha256_text(shared_rules),
         }
     return parsed
-

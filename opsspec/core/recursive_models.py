@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.types import constr
@@ -38,10 +38,9 @@ class OpInventory(BaseModel):
 
 
 class StepComposeOutput(BaseModel):
-    pickTaskId: TaskId
+    pickTaskId: Optional[TaskId] = None
     op_spec: Dict[str, JsonValue] = Field(default_factory=dict)
     inputs: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
-

@@ -1,26 +1,19 @@
 from opsspec.specs import *
 
-# Validation: validate_ops_spec_with_diagnostics
-# 추가할 것: ops와 sentenceIndex 체크
-# id와 meta 필수
-# op Id와 OpsMeta의 NodeId가 같은지?
-# field 이름 틀린거 있는지 (차트 id 주면 찾도록 해야 함)
-# 또 정확한 validation을 위해 필요한 것? (조건부로 필요한 parameter도 체크 가능한지?)
-
 # simple bar
-spec_0o12tngadmjjux2n = {
+spec_0o12tngadmjjux2n = { # chatgpt 정답 통과
     "ops": [
         AverageOp(
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-            field="Percentage_of_Respondents"
+            field="Production in million units"
         )
     ],
     "ops2": [
         FilterOp(
             id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
-            field="Percentage_of_Respondents",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            field="Production in million units",
             operator=">",
             value="ref:n1"
         )
@@ -40,40 +33,38 @@ spec_0pzdf7hfbxgjghsa = {
             field="Year",
             target="2017"
         ),
-        DiffOp(
-            id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=1),
-            field="Production in billion heads",
-            targetA="ref:n1",
-            targetB="ref:n2"
-        )
     ],
     "ops2": [
         RetrieveValueOp(
-            id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
             field="Year",
             target="2017"
         ),
         RetrieveValueOp(
-            id="n5",
-            meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=2),
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
             field="Year",
             target="2018"
         ),
-        DiffOp(
-            id="n6",
-            meta=OpsMeta(nodeId="n6", inputs=["n4", "n5"], sentenceIndex=2),
-            field="Production in billion heads",
-            targetA="ref:n4",
-            targetB="ref:n5"
-        )
     ],
     "ops3": [
         DiffOp(
-            id="n7",
-            meta=OpsMeta(nodeId="n7", inputs=["n3", "n6"], sentenceIndex=3),
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n1", "n2"], sentenceIndex=3),
+            targetA="ref:n1",
+            targetB="ref:n2",
+        ),
+        DiffOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n3", "n4"], sentenceIndex=3),
             targetA="ref:n3",
+            targetB="ref:n4",
+        ),
+        DiffOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n5", "n6"], sentenceIndex=3),
+            targetA="ref:n5",
             targetB="ref:n6",
         )
     ]
@@ -84,7 +75,7 @@ spec_0k7bm9iqewnrzj47 = {
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
             field="Year",
-            include=["2018", "2019", "2020"]
+            include=["2008", "2019", "2020"]
         ),
     ],
     "ops2": [
@@ -131,10 +122,10 @@ spec_0k7bm9iqewnrzj47 = {
             targetA="ref:n2",
             targetB="ref:n4",
         ),
-        CompareOp(
+        CompareBoolOp(
             id="n8",
             meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"], sentenceIndex=6),
-            which="max",
+            operator=">",
             targetA="ref:n6",
             targetB="ref:n7",
         ),
@@ -191,7 +182,7 @@ spec_10t8o5vhethzeod1 = {
         FindExtremumOp(
             id="n2",
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
-            field="Share_id_GDP",
+            field="Share_of_GDP",
             which="max"
         )
     ]
@@ -247,15 +238,15 @@ spec_0gzowodb2py0d1s9 = {
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
             by="Country_Region",
             field="Revenue_Million_USD",
-            groupA="Philippines",
-            groupB="Thailand",
+            groupA="Thailand",
+            groupB="Philippines",
 
         )
     ],
     "ops3": [
         FilterOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n3"], sentenceIndex=3),
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
             field="Revenue_Million_USD",
             operator=">",
             value=0,
@@ -313,12 +304,6 @@ spec_004fhteah0l9kud2 = {
 }
 spec_11e148qcs7x70t8v = {
     "ops": [
-        FilterOp(
-            id="n1",
-            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-            field="Country",
-            value=["South Korea", "France"]
-        ),
         PairDiffOp(
             id="n2",
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
@@ -328,7 +313,7 @@ spec_11e148qcs7x70t8v = {
             groupB="France",
         ),
     ],
-    "ops": [
+    "ops2": [
         FilterOp(
             id="n3",
             meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
@@ -338,7 +323,7 @@ spec_11e148qcs7x70t8v = {
         ),
     ]
 }
-
+#
 # grouped bar
 spec_0prhtod4tli879nh = {
     "ops": [
@@ -378,13 +363,12 @@ spec_0egzejn5mejtnfdm = {
     "ops2": [
         FilterOp(
             id="n3",
-            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=2),
-            field="Region",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
             group="England & Wales"
         ),
         FindExtremumOp(
             id="n4",
-            meta=OpsMeta(nodeId="n2", inputs=["n3"], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
             field="SharePercentage",
             which="min"
         ),
@@ -461,8 +445,8 @@ spec_0vw6ydim9cff8ji6 = {
         )
     ]
 }
-
-# simple line
+#
+# # simple line
 spec_10gtgmmgh599jnr7 = {
     "ops": [
         FilterOp(
@@ -604,7 +588,7 @@ spec_7272hodb02i6e09q = {
     ]
 }
 
-# multi line
+# # multi line
 spec_23wg8zio5ahp40tg = {
     "ops": [
         PairDiffOp(

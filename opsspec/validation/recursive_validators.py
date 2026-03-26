@@ -10,6 +10,17 @@ from ..runtime.artifacts import contains_object_ref, extract_scalar_ref_deps
 
 _TASK_ID_RE = re.compile(r"^o[0-9]+$")
 _NODE_ID_RE = re.compile(r"^n[0-9]+$")
+_SENTENCE_LAYER_GROUP_RE = re.compile(r"^ops(?:\d+)?$")
+_STRICT_SINGLE_GROUP_OPS: Set[str] = {
+    "average",
+    "count",
+    "findExtremum",
+    "sort",
+    "determineRange",
+    "retrieveValue",
+    "lagDiff",
+    "nth",
+}
 
 _VISUAL_DIRECTIVE_OPS: Set[str] = {
     "highlight",
@@ -96,6 +107,60 @@ def _is_flat_value(value: Any) -> bool:
     if isinstance(value, list):
         return all(isinstance(item, (str, int, float, bool, type(None))) for item in value)
     return False
+
+
+def _validate_step_compose_group_semantics(
+    *,
+    op_name: str,
+    op_spec: Dict[str, Any],
+    chart_context: Optional[ChartContext],
+    errors: List[str],
+) -> None:
+    if op_name not in _STRICT_SINGLE_GROUP_OPS:
+        return
+    if "group" not in op_spec:
+        return
+
+    raw_group = op_spec.get("group")
+    if raw_group is None:
+        return
+    if isinstance(raw_group, list):
+        errors.append(
+            f"{op_name}.group must be a single series value string (not list). "
+            "for year subsets, use filter(include=[...]) + average(inputs=[filter_node])."
+        )
+        return
+    if not isinstance(raw_group, str):
+        errors.append(f"{op_name}.group must be a non-empty string.")
+        return
+
+    token = raw_group.strip()
+    if not token:
+        errors.append(f"{op_name}.group must be a non-empty string.")
+        return
+    if _SENTENCE_LAYER_GROUP_RE.fullmatch(token):
+        errors.append(
+            f'{op_name}.group "{token}" is invalid; sentence-layer tokens (ops/ops2/...) are not series values.'
+        )
+        return
+
+    if chart_context is None:
+        return
+    if not chart_context.series_field:
+        errors.append(
+            f"{op_name}.group is invalid because chart_context.series_field is empty. "
+            "for year subsets, use filter(include=[...]) + average(inputs=[filter_node])."
+        )
+        return
+
+    domain = chart_context.categorical_values.get(chart_context.series_field, [])
+    if domain:
+        domain_set = {str(v) for v in domain}
+        if token not in domain_set:
+            errors.append(
+                f'{op_name}.group "{token}" is outside series domain for field "{chart_context.series_field}". '
+                "for year subsets, use filter(include=[...]) + average(inputs=[filter_node])."
+            )
 
 
 def validate_inventory(
@@ -197,9 +262,10 @@ def validate_inventory(
 def validate_step_compose_output(
     payload: Dict[str, Any],
     *,
-    remaining_tasks_by_id: Dict[str, OpTask],
+    selected_task: OpTask,
     executed_node_ids: Set[str],
     ops_contract: Dict[str, Any],
+    chart_context: Optional[ChartContext] = None,
 ) -> StepComposeOutput:
     sanitized = {k: v for k, v in (payload or {}).items() if k != "_debug" and not str(k).startswith("_")}
     try:
@@ -208,11 +274,7 @@ def validate_step_compose_output(
         raise ValueError(f"step-compose schema error: {exc}") from exc
 
     errors: List[str] = []
-    pick = str(parsed.pickTaskId)
-    task = remaining_tasks_by_id.get(pick)
-    if task is None:
-        errors.append(f'pickTaskId "{pick}" is not in remaining tasks.')
-        raise ValueError("\n".join(_format_errors(errors)))
+    task = selected_task
 
     if not isinstance(parsed.op_spec, dict) or not parsed.op_spec:
         errors.append("op_spec must be a non-empty object.")
@@ -230,6 +292,13 @@ def validate_step_compose_output(
         errors.append('op_spec.op must be a non-empty string.')
     elif op_name != task.op:
         errors.append(f'op_spec.op must match task.op "{task.op}" (got "{op_name}").')
+    if isinstance(op_name, str) and op_name:
+        _validate_step_compose_group_semantics(
+            op_name=op_name,
+            op_spec=parsed.op_spec,
+            chart_context=chart_context,
+            errors=errors,
+        )
 
     # Contract-based key validation.
     if isinstance(op_name, str) and op_name:

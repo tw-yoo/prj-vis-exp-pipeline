@@ -15,7 +15,7 @@
 ## 0) 엔드포인트 계약 (Public API)
 
 - Endpoint: `main.py`
-  - `POST /generate_grammar`: `question + explanation + vega_lite_spec + data_rows (+ debug)` → `{<opsSpec group map>}`
+  - `POST /generate_grammar`: `question + explanation + vega_lite_spec + data_rows (+ debug)` → `{<opsSpec group map>, "draw_plan": <draw group map>}`
   - `POST /run_module_trace`: 위 입력을 파일 경로로 받아, inventory/step trace를 포함한 디버그 응답 반환
 
 파이프라인 오케스트레이션(모듈 호출/재시도/실행/디버그 번들 저장):

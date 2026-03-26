@@ -197,20 +197,47 @@
 
 ## 8) Python Draw Plan 생성 기준 (`nlp_server/draw_plan/build_draw_plan.py`)
 
-- `retrieveValue/filter/findExtremum/nth/lagDiff/setOp/compare`: target 중심 `highlight`
-- `determineRange`
-  - categorical range: `band.axis="x"` + `[minLabel,maxLabel]`
-  - numeric range: `band.axis="y"` + `[minValue,maxValue]`
-- `sum`: `draw.action="sum"` (`sum.value`/`sum.label`)
-- `average/diff/count/compare/compareBool/add/scale`: `draw.action="line"` 수평선 + `text` 라벨
-- `compare/diff`: target selector가 있으면 `line.mode="connect"`로 두 target 연결
-- `diff`가 `ref:nX` 스칼라 결과를 비교할 때,
-  - 양쪽 target이 차트 도메인에 있으면 기존 `line.mode="connect"` 유지
-  - 양쪽 target이 차트 도메인 밖이면 `scalar-panel(layout="full-replace", absolute=true)`로 분기 (mode=`base` → `diff`)
-- `pairDiff`: groupA/groupB가 있으면 `line.connectBy(start/end series)`를 key별 생성
-- `setOp`: highlight + x-band(run 기준) 생성
-- `stacked/grouped`의 `group` scope op는 실행 전후로 `stacked-filter-groups` / `grouped-filter-groups`를 자동 삽입
+### 8.1 op → draw action 매핑표
+
+| Data op | 기본 draw action | 추가 규칙 |
+| --- | --- | --- |
+| `retrieveValue`, `filter`, `findExtremum`, `nth`, `lagDiff`, `setOp`, `compare`, `pairDiff` | `highlight` | result의 target key 기준 |
+| `determineRange` | `band` | categorical은 x-band, numeric은 y-band |
+| `sum` | `sum` | scalar sum annotation |
+| `average`, `count`, `compareBool`, `add`, `scale` | `line` + `text` | 수평선 + scalar label |
+| `compare`, `diff` | `line(mode=connect)` | target selector가 있으면 pair/connectBy 사용 |
+| `pairDiff` | `line(mode=connect)` | groupA/groupB를 connectBy(start/end series)로 연결 |
+| `setOp` | `highlight` + `band` | 선택 target run(연속 구간)에 band 추가 |
+
+### 8.2 `diff`의 scalar-panel 분기
+
+- `diff`가 scalar ref 기반(`ref:nX`) 비교이고, 두 값 모두 차트 도메인 target으로 매핑되지 않으면:
+  - line/text 대신 `scalar-panel` 2단계 생성
+  - `mode="base"` → `mode="diff"`
+  - `layout="full-replace"`, `absolute=true`
+
+### 8.3 scoped group filter 자동 삽입 정책
+
+- stacked/grouped bar에서 op에 `group`이 있으면:
+  - 실행 전: `stacked-filter-groups` 또는 `grouped-filter-groups` 삽입
+  - 실행 후: 동일 action의 `reset=true` 삽입
+- 즉, 각 scoped op는 로컬 group scope를 열고 닫는 형태로 변환됨
+
+### 8.4 scheduler view hint 처리 정책
+
+- `schedule_ops_spec`가 주입하는 `meta.view.phase`/`parallelGroup`/`split`은 **draw 생성 로직에서 의사결정에 직접 사용하지 않음**
+- draw plan은 runtime result와 op contract 기반으로 생성되며, `meta`는 주로 trace/debug 전달 목적
+- 따라서 draw 동작 차이는 view hint보다 op 의미와 실행 결과 shape에 의해 결정됨
+
+### 8.5 기타
+
+- 각 group 시작 시 `clear`를 자동 삽입
 - `sleep` draw op는 생성하지 않음
+- normalized 좌표 규약(backend/frontend 공통):
+  - `x, y`는 `[0,1]` 범위
+  - `x=0`은 좌측, `x=1`은 우측
+  - `y=0`은 하단, `y=1`은 상단
+  - 따라서 “상단 라벨” 기본값은 `y=0.92`를 사용
 
 참고:
 - TS 런타임은 `setOp/pairDiff/add/scale` data op를 정식 지원합니다.

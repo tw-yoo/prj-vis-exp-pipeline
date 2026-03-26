@@ -38,8 +38,8 @@
 `nlp_server`는 **(question + explanation) 자연어 텍스트**와 **Vega-Lite spec + data rows**를 입력으로 받아, 최종적으로 **OpsSpec(=grammar)** DAG를 생성해서 반환하는 서버입니다.
 
 - 출력 OpsSpec은 “legacy operation set(비-드로우)” 기반이며, 각 op에 `meta.nodeId` / `meta.inputs`가 포함되어 DAG를 복원할 수 있습니다.
-- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **최소 응답**(opsSpec group map만)으로 내려갑니다:
-  - `{ "ops": [...], "ops2": [...], ... }`
+- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **opsSpec group map + draw_plan**을 함께 반환합니다:
+  - `{ "ops": [...], "ops2": [...], ..., "draw_plan": { "ops": [ { "op":"draw", ... } ], ... } }`
 
 ---
 
@@ -88,7 +88,7 @@ Endpoint 구현:
 주요 엔드포인트:
 - `GET /health`
 - `GET /op_registry` (op 계약/스키마 힌트)
-- `POST /generate_grammar` (recursive pipeline, 최소 응답)
+- `POST /generate_grammar` (recursive pipeline, opsSpec + draw_plan 응답)
 - `POST /run_module_trace` (inventory + steps + ops_spec + trace 반환)
 - `POST /run_python_plan` (시나리오 파일로 grammar+draw plan 생성)
 - `POST /canonicalize_opsspec` (별도 유틸; pipeline 내부에서는 id 재작성 canonicalize를 사용하지 않음)

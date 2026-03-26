@@ -3,14 +3,16 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
+import re
 import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from draw_plan import build_draw_ops_spec, export_draw_plan_to_public
+from draw_plan import build_draw_ops_spec, export_draw_plan_to_public, validate_draw_groups_payload
 from opsspec.runtime.scheduler import schedule_ops_spec
 
 from ..core.llm import StructuredLLMClient
@@ -72,6 +74,20 @@ def _create_debug_session_dir() -> Path:
 
 def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_human_abstracted_json(path: Path, payload: Any) -> None:
+    """Write human abstracted ops spec with compact one-line meta objects."""
+    text = json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2)
+    meta_pattern = re.compile(r'"meta": \{\n(?P<body>(?:\s+"[^"]+": .*?(?:,\n|\n))+?)\s+\}')
+
+    def _collapse_meta(match: re.Match[str]) -> str:
+        body = match.group("body")
+        parts = [line.strip() for line in body.splitlines() if line.strip()]
+        return f'"meta": {{ {" ".join(parts)} }}'
+
+    collapsed = meta_pattern.sub(_collapse_meta, text)
+    path.write_text(collapsed + "\n", encoding="utf-8")
 
 
 def _escape_dot_label(text: str) -> str:
@@ -224,7 +240,7 @@ def _render_trace_markdown(
 
         lines.append("")
         lines.append(f"### Step {step.step}")
-        lines.append(f"- pickTaskId: {step.taskId}")
+        lines.append(f"- taskId: {step.taskId}")
         lines.append(f"- nodeId: {step.nodeId}")
         lines.append(f"- op: {step.op}")
         lines.append(f"- groupName: {step.groupName}")
@@ -263,6 +279,7 @@ def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
         ("02_inventory.json", "inventory"),
         ("00_trace.md", "trace_md"),
         ("90_final_grammar.json", "final_grammar"),
+        ("92_human_abstracted_ops_spec.json", "human_abstracted_ops_spec"),
         ("95_draw_plan.json", "draw_plan"),
         ("99_error.json", "error"),
     ):
@@ -271,6 +288,8 @@ def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
             continue
         if filename.endswith(".md"):
             Path(session_dir / filename).write_text(str(data), encoding="utf-8")
+        elif key == "human_abstracted_ops_spec":
+            _write_human_abstracted_json(session_dir / filename, data)
         else:
             _write_json(session_dir / filename, data)
 
@@ -309,6 +328,29 @@ def _persist_debug_bundle(payloads: Dict[str, Any]) -> Path:
     return session_dir
 
 
+def _build_human_abstracted_ops_spec(ops_spec: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a compact, human-readable debug artifact from ops_spec groups."""
+    abstracted: Dict[str, Any] = {}
+    for group_name, ops in (ops_spec or {}).items():
+        if not isinstance(ops, list):
+            continue
+        compact_ops: List[Dict[str, Any]] = []
+        for op in ops:
+            if not isinstance(op, dict):
+                continue
+            compact = dict(op)
+            compact.pop("chartId", None)
+            meta = compact.get("meta")
+            if isinstance(meta, dict):
+                meta_compact = dict(meta)
+                meta_compact.pop("source", None)
+                meta_compact.pop("view", None)
+                compact["meta"] = meta_compact
+            compact_ops.append(prune_nulls(compact))
+        abstracted[group_name] = compact_ops
+    return abstracted
+
+
 def _group_name(sentence_index: int) -> str:
     return "ops" if int(sentence_index) == 1 else f"ops{int(sentence_index)}"
 
@@ -319,6 +361,40 @@ def _task_sort_key(task: OpTask) -> int:
         return int(raw[1:])
     except Exception:
         return 10**9
+
+
+def _select_next_task(
+    remaining_by_id: Dict[str, OpTask],
+    *,
+    executed_node_ids: Set[str],
+) -> Tuple[OpTask, List[str]]:
+    candidates = sorted(list(remaining_by_id.values()), key=_task_sort_key)
+    if not candidates:
+        raise RuntimeError("select_next_task called with empty remaining_by_id.")
+
+    ready: List[OpTask] = []
+    for task in candidates:
+        deps = extract_scalar_ref_deps(task.paramsHint or {})
+        if deps.issubset(executed_node_ids):
+            ready.append(task)
+
+    if ready:
+        return ready[0], []
+
+    fallback = candidates[0]
+    missing = sorted(list(extract_scalar_ref_deps(fallback.paramsHint or {}) - executed_node_ids))
+    if missing:
+        return (
+            fallback,
+            [
+                f'deterministic task selector fallback: no ready tasks; selected "{fallback.taskId}" by minimum taskId '
+                f'with unresolved refs {missing}.',
+            ],
+        )
+    return (
+        fallback,
+        [f'deterministic task selector fallback: no ready tasks; selected "{fallback.taskId}" by minimum taskId.'],
+    )
 
 
 def _llm_debug_config(llm: StructuredLLMClient) -> Dict[str, Any]:
@@ -343,7 +419,14 @@ def _build_retry_feedback(attempt: int, max_retries: int, error: Exception) -> L
     err_lower = err_str.lower()
     lines = [f"[Attempt {attempt}/{max_retries} FAILED — fix and retry]"]
 
-    if "schema error" in err_lower or "validation error" in err_lower or "field required" in err_lower:
+    if ".group" in err_lower or "group must be" in err_lower:
+        lines.append(
+            "[Type: Group Rule] group must be a single series value string (not year list or sentence-layer token)."
+        )
+        lines.append(
+            "[Hint] For year subsets, use filter(include=[...]) first, then compute average/count/findExtremum using inputs=[<filter_node>]."
+        )
+    elif "schema error" in err_lower or "validation error" in err_lower or "field required" in err_lower:
         lines.append("[Type: Schema] Output did not match the required JSON schema.")
     elif "is not in allowed_ops" in err_str:
         lines.append("[Type: Invalid Op] Used an op name that is not listed in allowed_ops.")
@@ -361,6 +444,20 @@ def _build_retry_feedback(attempt: int, max_retries: int, error: Exception) -> L
     lines.append(f"[Detail] {err_str}")
     lines.append("[Action Required] Fix the specific issue above and return valid JSON only.")
     return lines
+
+
+def _resolve_draw_plan_mode() -> Tuple[str, List[str]]:
+    raw = (os.getenv("DRAW_PLAN_MODE", "off") or "off").strip().lower()
+    if raw in {"off", "validate", "export"}:
+        return raw, []
+    return "off", [f'Invalid DRAW_PLAN_MODE "{raw}" (allowed: off|validate|export). Fallback to "off".']
+
+
+def _resolve_draw_failure_policy() -> Tuple[str, List[str]]:
+    raw = (os.getenv("DRAW_PLAN_FAILURE_POLICY", "warn") or "warn").strip().lower()
+    if raw in {"warn", "raise"}:
+        return raw, []
+    return "warn", [f'Invalid DRAW_PLAN_FAILURE_POLICY "{raw}" (allowed: warn|raise). Fallback to "warn".']
 
 
 class OpsSpecPipeline:
@@ -426,6 +523,8 @@ class OpsSpecPipeline:
         max_steps = int(os.getenv("RECURSIVE_MAX_STEPS", "25") or "25")
         max_retries = int(os.getenv("RECURSIVE_MAX_RETRIES", "3") or "3")
         artifact_preview_n = int(os.getenv("ARTIFACT_PREVIEW_N", "5") or "5")
+        draw_plan_mode, draw_mode_notes = _resolve_draw_plan_mode()
+        draw_failure_policy, draw_policy_notes = _resolve_draw_failure_policy()
 
         debug_payloads: Dict[str, Any] = {
             "request": {
@@ -439,6 +538,8 @@ class OpsSpecPipeline:
                     "RECURSIVE_MAX_STEPS": max_steps,
                     "RECURSIVE_MAX_RETRIES": max_retries,
                     "ARTIFACT_PREVIEW_N": artifact_preview_n,
+                    "DRAW_PLAN_MODE": draw_plan_mode,
+                    "DRAW_PLAN_FAILURE_POLICY": draw_failure_policy,
                 },
             }
         }
@@ -654,14 +755,25 @@ class OpsSpecPipeline:
 
             step_feedback: List[str] = []
             compose_payload: Dict[str, Any] = {}
-            picked_task: Optional[OpTask] = None
+            selected_task, selection_warnings = _select_next_task(
+                remaining_by_id,
+                executed_node_ids=set(executed_node_ids),
+            )
+            picked_task: OpTask = selected_task
             grounded_op_spec: Dict[str, Any] = {}
             built_op: Optional[OperationSpec] = None
             scalar_deps: Set[str] = set()
             group_name: str = "ops"
             node_id: str = f"n{len(executed_node_ids) + 1}"
-            step_warnings: List[str] = []
+            step_warnings: List[str] = list(selection_warnings)
             remaining_before = _remaining_tasks_prompt()
+            selected_task_prompt = {
+                "taskId": str(selected_task.taskId),
+                "op": selected_task.op,
+                "sentenceIndex": int(selected_task.sentenceIndex),
+                "mention": selected_task.mention,
+                "paramsHint": selected_task.paramsHint,
+            }
 
             for attempt in range(1, max_retries + 1):
                 try:
@@ -673,6 +785,7 @@ class OpsSpecPipeline:
                         shared_rules_path=str(self.shared_rules_prompt_path),
                         question=question,
                         explanation=explanation,
+                        current_task=selected_task_prompt,
                         remaining_tasks=_remaining_tasks_prompt(),
                         available_nodes=sorted(
                             list(available_nodes_prompt),
@@ -688,12 +801,11 @@ class OpsSpecPipeline:
 
                     parsed = validate_step_compose_output(
                         compose_payload,
-                        remaining_tasks_by_id=remaining_by_id,
+                        selected_task=selected_task,
                         executed_node_ids=set(executed_node_ids),
                         ops_contract=ops_contract,
+                        chart_context=chart_context,
                     )
-                    picked_task = remaining_by_id.get(str(parsed.pickTaskId))
-                    assert picked_task is not None
 
                     scalar_deps = set(extract_scalar_ref_deps(parsed.op_spec))
                     grounded_op_spec, grounding_warnings = ground_op_spec(
@@ -722,6 +834,12 @@ class OpsSpecPipeline:
                     break
                 except Exception as exc:
                     step_feedback = _build_retry_feedback(attempt, max_retries, exc)
+                    step_feedback.append(
+                        f"[Selected Task] taskId={selected_task.taskId}, op={selected_task.op}"
+                    )
+                    step_feedback.append(
+                        "[Constraint] Do not select taskId in output. Compose op_spec/inputs for the selected task only."
+                    )
                     step_retry_notes.append(
                         f"step {step_idx} attempt {attempt}/{max_retries} failed with {len(step_feedback)} feedback lines"
                     )
@@ -738,7 +856,8 @@ class OpsSpecPipeline:
                             {
                                 "compose": {
                                     # Step-Compose LLM 출력 (명시적 추출 — failed path)
-                                    "pickTaskId": (compose_payload or {}).get("pickTaskId"),
+                                    "legacy_pickTaskId": (compose_payload or {}).get("pickTaskId"),
+                                    "selected_task": selected_task_prompt,
                                     "op_spec": (compose_payload or {}).get("op_spec"),
                                     "inputs": (compose_payload or {}).get("inputs"),
                                     "warnings": (compose_payload or {}).get("warnings"),
@@ -758,6 +877,7 @@ class OpsSpecPipeline:
                             "step": step_idx,
                             "errors": step_feedback,
                             "attempts": max_retries,
+                            "selected_task": selected_task_prompt,
                             "remaining_tasks": _remaining_tasks_prompt(),
                             "executed_nodes": available_nodes_prompt,
                         }
@@ -771,7 +891,6 @@ class OpsSpecPipeline:
                             + f" (debug_bundle={session_dir})"
                         ) from exc
 
-            assert picked_task is not None
             assert built_op is not None
 
             # Execute one op to grow artifacts (C).
@@ -798,6 +917,16 @@ class OpsSpecPipeline:
                 chart_context=chart_context,
                 max_items=max(1, artifact_preview_n),
             )
+            if any(math.isnan(float(item.value)) for item in runtime_values):
+                data_parent = "base"
+                if built_op.meta and built_op.meta.inputs:
+                    data_parent = str((built_op.meta.inputs or [])[0])
+                nan_warning = (
+                    "executor produced NaN value; likely empty slice or invalid group restriction "
+                    f"(nodeId={node_id}, op={built_op.op}, group={getattr(built_op, 'group', None)}, data_parent={data_parent})."
+                )
+                exec_warnings.append(nan_warning)
+                artifact["nan_detected"] = True
 
             # Update graph + state
             ops_spec_groups.setdefault(group_name, []).append(built_op)
@@ -818,7 +947,8 @@ class OpsSpecPipeline:
             step_debug_entry = {
                 "compose": {
                     # Step-Compose LLM 출력 (명시적 추출 — success path)
-                    "pickTaskId": compose_payload.get("pickTaskId"),
+                    "legacy_pickTaskId": compose_payload.get("pickTaskId"),
+                    "selected_task": selected_task_prompt,
                     "op_spec": compose_payload.get("op_spec"),
                     "inputs": compose_payload.get("inputs"),
                     "warnings": compose_payload.get("warnings"),
@@ -906,28 +1036,53 @@ class OpsSpecPipeline:
         # Draw Plan
         # ─────────────────────────────────────────────────────────
         draw_plan_warnings: List[str] = []
-        if debug:
+        draw_plan_warnings.extend(draw_mode_notes)
+        draw_plan_warnings.extend(draw_policy_notes)
+        if draw_plan_mode in {"validate", "export"}:
             try:
-                draw_ops_spec = build_draw_ops_spec(
+                draw_ops_spec_raw = build_draw_ops_spec(
                     ops_spec=scheduled_groups,
                     chart_context=chart_context,
                     data_rows=data_rows,
                     vega_lite_spec=vega_lite_spec,
                 )
-                draw_plan_path = export_draw_plan_to_public(draw_ops_spec, request_id=request_id)
-                debug_payloads["draw_plan"] = {
+                draw_ops_spec = validate_draw_groups_payload(draw_ops_spec_raw)
+                draw_debug: Dict[str, Any] = {
+                    "mode": draw_plan_mode,
+                    "groups": {k: len(v) for k, v in draw_ops_spec.items()},
                     "draw_ops_spec": draw_ops_spec,
-                    "path": str(draw_plan_path),
                 }
-                trace_logger.info(
-                    "[request:%s] draw_plan_exported | groups=%d path=%s",
-                    request_id,
-                    len(draw_ops_spec),
-                    str(draw_plan_path),
-                )
+                if draw_plan_mode == "export":
+                    draw_plan_path = export_draw_plan_to_public(draw_ops_spec, request_id=request_id)
+                    draw_debug["path"] = str(draw_plan_path)
+                    trace_logger.info(
+                        "[request:%s] draw_plan_exported | groups=%d path=%s",
+                        request_id,
+                        len(draw_ops_spec),
+                        str(draw_plan_path),
+                    )
+                else:
+                    trace_logger.info(
+                        "[request:%s] draw_plan_validated | groups=%d",
+                        request_id,
+                        len(draw_ops_spec),
+                    )
+                debug_payloads["draw_plan"] = draw_debug
             except Exception as exc:
-                draw_plan_warnings.append(f"draw plan generation failed: {exc}")
-                debug_payloads["draw_plan"] = {"error": str(exc)}
+                err = f"draw plan {draw_plan_mode} failed: {exc}"
+                debug_payloads["draw_plan"] = {"mode": draw_plan_mode, "error": str(exc)}
+                if draw_failure_policy == "raise":
+                    debug_payloads["error"] = {
+                        "stage": "draw_plan_failed",
+                        "mode": draw_plan_mode,
+                        "error": str(exc),
+                    }
+                    debug_payloads["steps"] = steps_debug
+                    _attach_trace_md()
+                    session_dir = _persist_debug_bundle(debug_payloads)
+                    trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
+                    raise RuntimeError(f"{err} (debug_bundle={session_dir})") from exc
+                draw_plan_warnings.append(err)
                 trace_logger.warning("[request:%s] draw_plan_failed | error=%s", request_id, str(exc))
 
         # ─────────────────────────────────────────────────────────
@@ -973,6 +1128,9 @@ class OpsSpecPipeline:
         # debug=True 인 경우에만 draw_plan/trace 객체가 API 응답에 포함됨.
         debug_payloads["steps"] = steps_debug
         debug_payloads["final_grammar"] = result.model_dump(mode="json", by_alias=True)
+        debug_payloads["human_abstracted_ops_spec"] = _build_human_abstracted_ops_spec(
+            debug_payloads["final_grammar"].get("ops_spec", {})
+        )
         debug_payloads["pre_schedule_grammar"] = {
             group: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
             for group, ops in pre_schedule_groups.items()

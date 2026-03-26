@@ -104,11 +104,11 @@ def _issue(
 
 
 def _group_to_sentence_index(group_name: str) -> Optional[int]:
-    """그룹명에서 sentence index를 추출합니다. 유효하지 않으면 None 반환.
+    """그룹명에서 sentence index를 추출합니다.
 
     - "ops"       → 1
     - "ops2"~     → 2, 3, ...
-    - 그 외        → None (유효하지 않은 그룹명)
+    - 그 외 커스텀 이름 → 9999 (최하위 우선순위, 허용됨)
     """
     if group_name == "ops":
         return 1
@@ -118,7 +118,8 @@ def _group_to_sentence_index(group_name: str) -> Optional[int]:
             return idx if idx >= 2 else None
         except Exception:
             return None
-    return None
+    # 커스텀 그룹 이름 허용 (예: "split_demo", "filter_asia", "merge" 등)
+    return 9999
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +171,7 @@ def _validate_and_parse_ops_spec_groups_impl(
             if collect_issues:
                 issues.append(_issue(code="invalid_group_name", message=msg, stage="group", group=group_name))
             continue
+        # sentence_index == 9999 이면 커스텀 이름 — 경고 없이 통과
 
         if raw_ops is None:
             raw_ops = []
@@ -221,6 +223,10 @@ def _validate_and_parse_ops_spec_groups_impl(
                                 op=op_name,
                             )
                         )
+
+            if isinstance(raw, dict) and raw.get('op') == 'draw':
+                # draw ops는 클라이언트 전용 시각화 명령 — 서버 스키마 검증 없이 스킵
+                continue
 
             try:
                 op = parse_operation_spec(raw)

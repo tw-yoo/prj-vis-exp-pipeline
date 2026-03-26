@@ -6,10 +6,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from ..core.models import ChartContext
 from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS
 from ..specs.add import AddOp
-from ..specs.aggregate import AverageOp, SumOp
-from ..specs.compare import CompareBoolOp, PairDiffOp
+from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
+from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
-from ..specs.range_sort_select import FindExtremumOp, NthOp
+from ..specs.range_sort_select import DetermineRangeOp, FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
 from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
@@ -21,6 +21,9 @@ def is_allowed_op(op_name: str) -> bool:
     return op_name in ALLOWED_OPS
 
 
+_SENTENCE_LAYER_GROUP_RE = re.compile(r"^ops(?:\d+)?$")
+
+
 def _sorted_unique(values: Iterable[PrimitiveValue]) -> List[PrimitiveValue]:
     unique: Dict[str, PrimitiveValue] = {}
     for value in values:
@@ -28,6 +31,48 @@ def _sorted_unique(values: Iterable[PrimitiveValue]) -> List[PrimitiveValue]:
         if key not in unique:
             unique[key] = value
     return sorted(unique.values(), key=lambda item: str(item))
+
+
+def _normalize_series_group_for_single_group_ops(
+    *,
+    raw_group: Any,
+    chart_context: ChartContext,
+    op_name: str,
+) -> Optional[str]:
+    if raw_group is None:
+        return None
+    if isinstance(raw_group, list):
+        raise ValueError(
+            f'{op_name}.group must be a single series value string (not list). '
+            'For dimension subsets, use filter(include=[...]) then pass inputs=[<filter_node>].'
+        )
+    if not isinstance(raw_group, str):
+        raise ValueError(f"{op_name}.group must be a string.")
+
+    token = raw_group.strip()
+    if not token:
+        raise ValueError(f"{op_name}.group must be a non-empty string.")
+    if _SENTENCE_LAYER_GROUP_RE.fullmatch(token):
+        raise ValueError(
+            f'{op_name}.group "{token}" is invalid: sentence-layer tokens (ops/ops2/...) are not series values.'
+        )
+
+    series_field = chart_context.series_field
+    if not series_field:
+        raise ValueError(
+            f'{op_name}.group is invalid because chart_context.series_field is empty. '
+            'For dimension subsets, use filter(include=[...]) and consume that node via inputs.'
+        )
+
+    series_domain = chart_context.categorical_values.get(series_field, [])
+    if series_domain:
+        domain_set = {str(v) for v in series_domain}
+        if token not in domain_set:
+            raise ValueError(
+                f'{op_name}.group "{token}" is outside series domain for field "{series_field}". '
+                'For dimension subsets, use filter(include=[...]) then inputs=[<filter_node>].'
+            )
+    return token
 
 
 def _resolve_scalar_reference(raw: Any, runtime_scalars: Dict[str, float]) -> Tuple[Any, Optional[str]]:
@@ -302,6 +347,26 @@ def validate_operation(
     if isinstance(op, FilterOp):
         return validate_filter_spec(op, chart_context=chart_context, runtime_scalars=runtime_scalars)
 
+    if isinstance(
+        op,
+        (
+            AverageOp,
+            CountOp,
+            FindExtremumOp,
+            SortOp,
+            DetermineRangeOp,
+            RetrieveValueOp,
+            LagDiffOp,
+            NthOp,
+        ),
+    ):
+        normalized_group = _normalize_series_group_for_single_group_ops(
+            raw_group=getattr(op, "group", None),
+            chart_context=chart_context,
+            op_name=op.op,
+        )
+        op = op.model_copy(update={"group": normalized_group})
+
     if isinstance(op, AverageOp):
         updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
         warnings.extend(op_warnings)
@@ -320,6 +385,30 @@ def validate_operation(
     if isinstance(op, SetOp):
         if op.meta is None or len(op.meta.inputs) < 2:
             raise ValueError('setOp requires meta.inputs with at least two nodeIds')
+        return op, warnings
+
+    if isinstance(op, DiffOp):
+        if op.targetA is None:
+            raise ValueError('diff targetA는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.targetB is None:
+            raise ValueError('diff targetB는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.meta is not None and len(op.meta.inputs) != 2:
+            raise ValueError(
+                f'diff meta.inputs에 정확히 2개의 nodeId가 필요합니다 (현재 {len(op.meta.inputs)}개)'
+            )
+        return op, warnings
+
+    if isinstance(op, CompareOp):
+        if op.targetA is None:
+            raise ValueError('compare targetA는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.targetB is None:
+            raise ValueError('compare targetB는 필수입니다 (scalar ref "ref:nX" 형식)')
+        if op.which is None:
+            raise ValueError('compare which는 필수입니다 ("min" 또는 "max")')
+        if op.meta is not None and len(op.meta.inputs) != 2:
+            raise ValueError(
+                f'compare meta.inputs에 정확히 2개의 nodeId가 필요합니다 (현재 {len(op.meta.inputs)}개)'
+            )
         return op, warnings
 
     if isinstance(op, ScaleOp):
