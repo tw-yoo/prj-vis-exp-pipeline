@@ -86,7 +86,7 @@ spec_0bgcjlbz7nv5vnjc={
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
       field="SharePercentage",
-      order=["desc"]
+      order="desc"
     )
   ],
   "ops3":[
@@ -117,17 +117,20 @@ spec_0bgcjlbz7nv5vnjc={
       id="n6",
       meta=OpsMeta(nodeId="n6", inputs=["n3"], sentenceIndex=4),
       field="SharePercentage",
+      target="ref:n3",
       factor=1/3
     ),
     ScaleOp(
       id="n7",
       meta=OpsMeta(nodeId="n7", inputs=["n4"], sentenceIndex=4),
+      target="ref:n4",
       field="SharePercentage",
       factor=1/3
     ),
     ScaleOp(
       id="n8",
       meta=OpsMeta(nodeId="n8", inputs=["n5"], sentenceIndex=4),
+      target="ref:n5",
       field="SharePercentage",
       factor=1/3
     ),
@@ -150,7 +153,7 @@ spec_08iur64i01boakg5={
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
       field="Percentage of 25 to 29 year olds",
-      order=["desc"]
+      order="desc"
     )
   ],
   "ops3":[
@@ -212,7 +215,7 @@ spec_0b9o2vahkw2a1bxy={
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
       field="Share of respondents",
-      order=["desc"]
+      order="desc"
     )
   ],
   "ops2":[
@@ -234,7 +237,7 @@ spec_0b9o2vahkw2a1bxy={
       id="n5",
       meta=OpsMeta(nodeId="n5", inputs=["n4"], sentenceIndex=3),
       field="Share of respondents",
-      order=["desc"]
+      order="desc"
     )
   ],
   "ops4":[
@@ -763,7 +766,7 @@ spec_651x1l1swysyy6vp={
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Share of respondents who are worried",
-      order=["asc"]
+      order="asc"
     )
   ],
   "ops2":[
@@ -771,7 +774,7 @@ spec_651x1l1swysyy6vp={
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
       field="Share of respondents who are worried",
-      whick="max",
+      which="max",
       rank=5
     ),
     RetrieveValueOp(
@@ -878,7 +881,6 @@ spec_0xc7sx6ll8fl5rgh={
       id="n3",
       meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=1),
       field="Percentage of votes",
-      operator="<",
       targetA="ref:n2",
       targetB="ref:n1"
     )
@@ -1009,7 +1011,7 @@ spec_6al86e9qyokma74i={
   "ops":[
     AverageOp(
       id="n1",
-      meta=OpsMeta(nodeId="n1", inputer=[], sentenceIndex=1),
+      meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Number of renunciations"
     )
   ],
@@ -1041,7 +1043,7 @@ spec_724mfnyk34kp97le={
     FilterOp(
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
-      filed="Cinema visits in millions",
+      field="Cinema visits in millions",
       operator="<",
       value="ref:n1"
     )
@@ -1064,8 +1066,9 @@ spec_1q3mzgt77lwo172f={
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Asset Size",
-      targetA="0 – 500 million US dollars",
-      targetB="2,001 – 10,000 million US dollars"
+      by="Asset Size",
+      groupA="0 – 500 million US dollars",
+      groupB="2,001 – 10,000 million US dollars"
     ),
   ],
   "ops2":[
@@ -1709,6 +1712,7 @@ spec_3z678inbp0t89ahu={
       id="n6",
       meta=OpsMeta(nodeId="n6", inputs=[], sentenceIndex=4),
       field="Percentage_of_Respondents",
+      by="Asset Size",
       groupA="Dissatisfied",
       groupB="Satisfied"
     )
@@ -1843,7 +1847,7 @@ spec_7272hodb02i6e09q={
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Year",
-      inlcude=["2009", "2010", "2011", "2012", "2013"]
+      include=["2009", "2010", "2011", "2012", "2013"]
     ),
     FindExtremumOp(
       id="n2",
@@ -1857,7 +1861,7 @@ spec_7272hodb02i6e09q={
       id="n3",
       meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
       field="Year",
-      inlcude=["2015", "2016", "2017", "2018", "2019"]
+      include=["2015", "2016", "2017", "2018", "2019"]
     ),
     FindExtremumOp(
       id="n4",
@@ -1870,7 +1874,7 @@ spec_7272hodb02i6e09q={
     DiffOp(
       id="n5",
       meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"], sentenceIndex=3),
-      filed="Population growth compared to previous year",
+      field="Population growth compared to previous year",
       targetA="ref:n2",
       targetB="ref:n4",
     )
@@ -1928,7 +1932,7 @@ spec_1y6itl6f2ho959ec={
     ),
 
     # Mexico difference(Disapproves)
-    FilterOp(
+    DiffOp(
       id="n7",
       meta=OpsMeta(nodeId="n7", inputs=["n2", "n8"], sentenceIndex=3),
       field="Share_of_Respondents",
@@ -1936,7 +1940,7 @@ spec_1y6itl6f2ho959ec={
       targetB="ref:n8"
     ),
 
-    FilterOp(
+    DiffOp(
       id="n9",
       meta=OpsMeta(nodeId="n9", inputs=["n2", "n8"], sentenceIndex=3),
       field="Share_of_Respondents",
@@ -1962,6 +1966,7 @@ spec_4ldjaoujpydpkbu5 = {
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Inhabitants in millions",
+      by="Gender",
       groupA="Male",
       groupB="Female"
     )
@@ -2047,7 +2052,7 @@ spec_221xwpab655f7g8x = {
     ),
     FilterOp(
       id="n2",
-      meat=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
+      meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
       field="Age Group",
       group="0–14 years"
     )
@@ -2088,7 +2093,7 @@ spec_23an1hozb7myw4e2 = {
     FilterOp(
       id="n3",
       meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
-      filed="Share_of_Revenue",
+      field="Share_of_Revenue",
       operator="<",
       value=0
     ),
@@ -2101,7 +2106,7 @@ spec_ = {
     FilterOp(
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-      filed="Economic_Impact_Billion_USD",
+      field="Economic_Impact_Billion_USD",
       include=["2026", "2027", "2028", "2029"]
     )
   ],
@@ -2122,7 +2127,7 @@ spec_ = {
      FilterOp(
        id="n4",
        meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=2),
-       filed="Contribution_Type",
+       field="Contribution_Type",
        group="Total contribution"
      ),
 
@@ -2140,7 +2145,7 @@ spec_74p313e1n8rzkfzp = {
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Share of respondents",
-      order=["asc"]
+      order="asc"
     )
   ],
   "ops2":[
@@ -2148,7 +2153,7 @@ spec_74p313e1n8rzkfzp = {
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
       field="Share of respondents",
-      order=["asc"]
+      order="asc"
     )
   ],
   "ops3":[
@@ -2221,7 +2226,7 @@ spec_1gb8sqnptdsdvagz = {
     )
   ],
   "ops2": [
-    CompareBoolOp(
+    FilterOp(
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
       field="Share of respondents",
@@ -2255,7 +2260,7 @@ spec_4vcdm7lwwlgdd0h1 = {
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
       field="Median_Wealth_Million_USD",
-      order=["asc"]
+      order="asc"
     )
   ],
   "ops3":[
@@ -2332,7 +2337,7 @@ spec_240rurpp2arislnt = {
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
       field="Share of respondents",
-      order=["asc"]
+      order="asc"
     )
   ],
   "ops2":[
@@ -2354,7 +2359,7 @@ spec_240rurpp2arislnt = {
       id="n5",
       meta=OpsMeta(nodeId="n5", inputs=["n4"], sentenceIndex=3),
       field="Share of respondents",
-      order=["asc"]
+      order="asc"
     )
   ], 
   "ops4":[
@@ -2446,14 +2451,13 @@ spec_4twwx65oath7vrkt = {
     FilterOp(
       id="n3",
       meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
-      filed="Trade_Type",
+      field="Trade_Type",
       group="Exports",
-      signed=True,
     ),
     FilterOp(
       id="n4",
       meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
-      filed="Year",
+      field="Year",
       include=["2000"]
     ),
     DiffOp(
