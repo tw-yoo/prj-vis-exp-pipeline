@@ -462,7 +462,7 @@ spec_174uq759pluu079w={
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
       field="Shipments_Million_Units",
-      order=["asc"]
+      order="asc"
     )
   ]
 }
@@ -481,7 +481,7 @@ spec_0w5jptak9peti0mj={
       id="n2",
       meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
       field="Annual revenue in million USD",
-      order=["asc"],
+      order="asc",
       orderField="Region",
       n=1
     ),
@@ -497,7 +497,7 @@ spec_0w5jptak9peti0mj={
       id="n4",
       meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
       field="Annual revenue in million USD",
-      order=["asc"],
+      order="asc",
       orderField="Region",
       n=1
     ),
@@ -513,7 +513,7 @@ spec_0w5jptak9peti0mj={
       id="n6",
       meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=1),
       field="Annual revenue in million USD",
-      order=["asc"],
+      order="asc",
       orderField="Region",
       n=1
     ),
@@ -529,7 +529,7 @@ spec_0w5jptak9peti0mj={
       id="n8",
       meta=OpsMeta(nodeId="n8", inputs=["n7"], sentenceIndex=1),
       field="Annual revenue in million USD",
-      order=["asc"],
+      order="asc",
       orderField="Region",
       n=1
     ),
@@ -545,7 +545,7 @@ spec_0w5jptak9peti0mj={
       id="n10",
       meta=OpsMeta(nodeId="n10", inputs=["n9"], sentenceIndex=1),
       field="Annual revenue in million USD",
-      order=["asc"],
+      order="asc",
       orderField="Region",
       n=1
     ),
@@ -562,7 +562,7 @@ spec_0w5jptak9peti0mj={
       id="n12",
       meta=OpsMeta(nodeId="n12", inputs=["n11"], sentenceIndex=1),
       field="Annual revenue in million USD",
-      order=["asc"],
+      order="asc",
       orderField="Region",
       n=1
     ),
@@ -1999,6 +1999,7 @@ spec_12sdcc2xjltg7qj2 = {
       id="n1",
       meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
       field="Category",
+      by="Category",
       groupA="Total contributions to presidential candidates",
       groupB="Total spending by presidential candidates"
     )
