@@ -1,0 +1,67 @@
+{
+  "chart_family": "bar_simple",
+  "mark": "bar",
+  "dimensions": {
+    "width": 640,
+    "height": 360,
+    "margin": {
+      "top": 32,
+      "right": 24,
+      "bottom": 56,
+      "left": 64
+    }
+  },
+  "fields": {
+    "x": {
+      "field": "Year",
+      "type": "nominal",
+      "title": "Year"
+    },
+    "y": {
+      "field": "Revenue multiple",
+      "type": "quantitative",
+      "title": "Revenue multiple"
+    }
+  },
+  "row_count": 15,
+  "supported_vl_properties": [
+    "mark",
+    "encoding.x",
+    "encoding.y",
+    "encoding.color",
+    "width",
+    "height",
+    "axis.title",
+    "encoding.sort",
+    "mark.color/fill/stroke"
+  ],
+  "rejected_vl_properties": [
+    "facet",
+    "concat",
+    "hconcat",
+    "vconcat",
+    "repeat",
+    "params",
+    "selection",
+    "transform",
+    "encoding.aggregate",
+    "encoding.bin",
+    "encoding.timeUnit"
+  ],
+  "annotation_contract": {
+    "function_name": "renderAnnotatedChart",
+    "allowed_region": "between annotation markers only",
+    "markers": {
+      "start": "// ANNOTATION_LAYER_START",
+      "end": "// ANNOTATION_LAYER_END"
+    },
+    "anchors": [
+      "const data",
+      "const svg",
+      "const chartLayer",
+      "const annotationLayer",
+      "const xScale",
+      "const yScale"
+    ]
+  }
+}

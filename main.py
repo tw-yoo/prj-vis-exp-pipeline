@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+import json
 import logging
 import os
 import time
@@ -12,10 +13,13 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from models import (
+    AnnotateChartImageRequest,
+    AnnotateChartImageResponse,
     CanonicalizeOpsSpecRequest,
     CanonicalizeOpsSpecResponse,
     CompileOpsPlanRequest,
     CompileOpsPlanResponse,
+    GenerateD3AnnotationBaselineResponse,
     GenerateAnswerRequest,
     GenerateAnswerResponse,
     GenerateGrammarRequest,
@@ -32,6 +36,20 @@ from opsspec.runtime.scheduler import schedule_ops_spec
 from opsspec.runtime.execution_plan import build_sentence_execution_plan
 from opsspec.runtime.visual_execution_plan import build_visual_execution_plan
 from opsspec.modules.pipeline import OpsSpecPipeline
+from opsspec.modules.module_baseline_single_shot import run_baseline_single_shot
+from opsspec.modules.module_baseline_d3_annotation import D3AnnotationStepValidationError, run_baseline_d3_annotation
+from opsspec.modules.module_baseline_text_to_image import run_baseline_text_to_image
+from opsspec.modules.module_baseline_vegalite_annotation import run_baseline_vegalite_annotation
+from opsspec.modules.module_chart_annotator import annotate_chart_steps
+from opsspec.modules.module_inventory import split_explanation_sentences
+from opsspec.modules.prompt_examples import (
+    build_single_shot_few_shot_examples,
+    build_text_to_image_few_shot_examples,
+    build_vegalite_annotation_few_shot_examples,
+    tune_few_shot_budget,
+)
+from opsspec.runtime.op_registry import build_ops_contract_for_prompt
+from opsspec.core.llm import StructuredLLMClient
 from opsspec.modules.answer_pipeline import (
     ChartAnswerPipeline,
     _load_csv_file,
@@ -43,6 +61,7 @@ from opsspec.runtime.python_scenario_loader import PythonScenarioLoadError, load
 from opsspec.runtime.ui_schema import build_op_registry_ui_schema
 from opsspec.runtime.context_builder import build_chart_context
 from opsspec.runtime.canonicalize import canonicalize_ops_spec_groups
+from opsspec.runtime.vegalite_to_d3 import convert_vegalite_to_d3
 from opsspec.validation.endpoint_validators import validate_and_parse_ops_spec_groups, validate_refs_against_node_ids
 from opsspec.core.utils import prune_nulls
 
@@ -874,6 +893,515 @@ async def run_python_plan(request: RunPythonPlanRequest):
             logger.error("[/run_python_plan] error report saved | request_id=%s path=%s", request_id, report_path)
         trace_logger.error("[request:%s] python_plan_unhandled_error | elapsed_ms=%.1f error=%s", request_id, elapsed_ms, exc)
         raise HTTPException(status_code=500, detail=f"Failed to run python plan: {exc}") from exc
+
+
+def _get_baseline_llm(app_instance: FastAPI) -> StructuredLLMClient:
+    """Get or create a shared LLM client for baseline endpoints."""
+    llm = getattr(app_instance.state, "_baseline_llm", None)
+    if llm is None:
+        pipeline: OpsSpecPipeline = getattr(app_instance.state, "grammar_pipeline", None)
+        if pipeline is None:
+            raise HTTPException(status_code=500, detail="Grammar pipeline is not initialized.")
+        llm = pipeline.llm
+        app_instance.state._baseline_llm = llm
+    return llm
+
+
+def _load_baseline_prompt(name: str) -> str:
+    path = Path(__file__).parent / "prompts" / name
+    if not path.exists():
+        raise HTTPException(status_code=500, detail=f"Prompt file not found: {name}")
+    text = path.read_text(encoding="utf-8")
+    if not text.strip():
+        raise HTTPException(status_code=500, detail=f"Prompt file is empty: {name}")
+    return text
+
+
+def _build_common_context(request: GenerateGrammarRequest):
+    """Build chart context, roles summary, and other common variables used by all baselines."""
+    chart_context, context_warnings, rows_preview = build_chart_context(
+        request.vega_lite_spec, request.data_rows
+    )
+    roles_summary = {
+        "primary_measure": chart_context.primary_measure,
+        "primary_dimension": chart_context.primary_dimension,
+        "series_field": chart_context.series_field,
+    }
+    series_domain: List[Any] = []
+    if chart_context.series_field:
+        series_domain = list(chart_context.categorical_values.get(chart_context.series_field, []))
+    measure_fields = list(chart_context.measure_fields)
+    explanation_sentences = split_explanation_sentences(request.explanation)
+    return chart_context, context_warnings, rows_preview, roles_summary, series_domain, measure_fields, explanation_sentences
+
+
+def _d3_annotation_debug_root() -> Path:
+    return Path(__file__).resolve().parent / "opsspec" / "debug_d3_annotation"
+
+
+def _create_d3_annotation_debug_dir() -> Path:
+    base = _d3_annotation_debug_root()
+    base.mkdir(parents=True, exist_ok=True)
+    stem = datetime.now().strftime("%m%d%H%M")
+    candidate = base / stem
+    if not candidate.exists():
+        candidate.mkdir(parents=True, exist_ok=False)
+        return candidate
+    suffix = 1
+    while True:
+        alt = base / f"{stem}_{suffix:02d}"
+        if not alt.exists():
+            alt.mkdir(parents=True, exist_ok=False)
+            return alt
+        suffix += 1
+
+
+def _write_debug_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.write_text(json.dumps(prune_nulls(payload), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _persist_d3_annotation_debug_bundle(
+    *,
+    debug_dir: Path,
+    request: GenerateGrammarRequest,
+    request_id: str,
+    chart_context: Dict[str, Any] | None,
+    context_warnings: List[str] | None,
+    rows_preview: List[Dict[str, Any]] | None,
+    base_chart: Dict[str, Any] | None,
+    result_debug: Dict[str, Any] | None,
+    final_result: Dict[str, Any] | None,
+    error: Exception | None,
+) -> None:
+    _write_debug_json(
+        debug_dir / "00_request.json",
+        {
+            "request_id": request_id,
+            "question": request.question,
+            "explanation": request.explanation,
+            "vega_lite_spec": request.vega_lite_spec,
+            "data_rows_count": len(request.data_rows),
+            "debug": bool(request.debug),
+        },
+    )
+
+    if chart_context is not None:
+        _write_debug_json(
+            debug_dir / "01_context.json",
+            {
+                "chart_context": chart_context,
+                "context_warnings": context_warnings or [],
+                "rows_preview": rows_preview or [],
+            },
+        )
+
+    if base_chart is not None:
+        _write_debug_json(
+            debug_dir / "02_base_d3.json",
+            {
+                "chart_family": base_chart.get("chart_family"),
+                "d3_code": base_chart.get("d3_code"),
+            },
+        )
+        _write_debug_json(
+            debug_dir / "03_converter_summary.json",
+            base_chart.get("converter_summary") or {},
+        )
+
+    if result_debug is not None:
+        steps = result_debug.get("steps") or []
+        for step in steps:
+            step_index = int(step.get("step") or 0)
+            prompt_prefix = 4 + ((step_index - 1) * 2)
+            _write_debug_json(
+                debug_dir / f"{prompt_prefix:02d}_step_{step_index:02d}_prompt.json",
+                {
+                    "system_prompt": result_debug.get("system_prompt"),
+                    "prompt_path": result_debug.get("prompt_path"),
+                    "prompt_sha256": result_debug.get("prompt_sha256"),
+                    "user_prompt": step.get("user_prompt"),
+                    "validation_feedback": step.get("validation_feedback") or [],
+                },
+            )
+            _write_debug_json(
+                debug_dir / f"{prompt_prefix + 1:02d}_step_{step_index:02d}_response.json",
+                {
+                    "parsed": step.get("parsed") or {},
+                },
+            )
+
+    if final_result is not None:
+        _write_debug_json(
+            debug_dir / "90_final_d3.json",
+            {
+                "base_chart": final_result.get("base_chart") or {},
+                "step_specs": final_result.get("step_specs") or [],
+                "warnings": final_result.get("warnings") or [],
+            },
+        )
+
+    if error is not None:
+        _write_debug_json(
+            debug_dir / "99_error.json",
+            {
+                "error_type": type(error).__name__,
+                "error": str(error),
+            },
+        )
+
+
+@app.post("/generate_grammar_baseline_single_shot")
+async def generate_grammar_baseline_single_shot(request: GenerateGrammarRequest):
+    """Baseline: Generate the complete OpsSpec DAG in a single LLM call."""
+    llm = _get_baseline_llm(app)
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    q_preview = " ".join(request.question.split())[:120]
+    logger.info('[/baseline_single_shot] request received | request_id=%s question="%s"', request_id, q_preview)
+
+    try:
+        prompt_template = _load_baseline_prompt("baseline_single_shot_opsspec.md")
+        shared_rules_path = Path(__file__).parent / "prompts" / "opsspec_shared_rules.md"
+        shared_rules = shared_rules_path.read_text(encoding="utf-8") if shared_rules_path.exists() else ""
+
+        (
+            chart_context, context_warnings, rows_preview,
+            roles_summary, series_domain, measure_fields, explanation_sentences,
+        ) = _build_common_context(request)
+
+        ops_contract = build_ops_contract_for_prompt()
+        budget = tune_few_shot_budget(
+            question=request.question,
+            explanation=request.explanation,
+            chart_context=chart_context.model_dump(mode="json"),
+        )
+        few_shot = build_single_shot_few_shot_examples(
+            question=request.question,
+            explanation=request.explanation,
+            chart_context=chart_context.model_dump(mode="json"),
+            max_examples=budget.inventory_max_examples,
+            max_chars=budget.inventory_max_chars,
+        )
+
+        max_retries = int(os.getenv("RECURSIVE_MAX_RETRIES", "3") or "3")
+        validation_feedback: List[str] = []
+        result = None
+
+        for attempt in range(1, max_retries + 1):
+            result = run_baseline_single_shot(
+                llm=llm,
+                prompt_template=prompt_template,
+                prompt_path="prompts/baseline_single_shot_opsspec.md",
+                shared_rules=shared_rules,
+                shared_rules_path="prompts/opsspec_shared_rules.md",
+                question=request.question,
+                explanation=request.explanation,
+                explanation_sentences=explanation_sentences,
+                chart_context=chart_context.model_dump(mode="json"),
+                roles_summary=roles_summary,
+                series_domain=series_domain,
+                measure_fields=measure_fields,
+                rows_preview=rows_preview,
+                ops_contract=ops_contract,
+                validation_feedback=validation_feedback,
+                few_shot_examples=few_shot.text,
+                include_debug_prompts=bool(request.debug),
+            )
+            break
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "[/baseline_single_shot] completed | request_id=%s elapsed_ms=%.1f",
+            request_id, elapsed_ms,
+        )
+
+        # Remove internal keys before returning
+        result.pop("_debug", None)
+        return prune_nulls(result)
+
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.error(
+            "[/baseline_single_shot] error | request_id=%s elapsed_ms=%.1f error=%s",
+            request_id, elapsed_ms, exc,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/generate_visual_desc_baseline")
+async def generate_visual_desc_baseline(request: GenerateGrammarRequest):
+    """Baseline: Generate image generation prompts for visual chart explanation.
+
+    Returns one image_prompt per explanation sentence via sequential LLM calls.
+    Each prompt is self-contained and cumulative (includes all prior annotations).
+    Response: { steps: [{sentenceIndex, sentence, image_prompt, visual_elements}], warnings }
+    """
+    llm = _get_baseline_llm(app)
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    q_preview = " ".join(request.question.split())[:120]
+    logger.info('[/visual_desc_baseline] request received | request_id=%s question="%s"', request_id, q_preview)
+
+    try:
+        step_prompt_template = _load_baseline_prompt("baseline_text_to_image_step.md")
+
+        (
+            chart_context, context_warnings, rows_preview,
+            roles_summary, series_domain, measure_fields, explanation_sentences,
+        ) = _build_common_context(request)
+
+        result = run_baseline_text_to_image(
+            llm=llm,
+            step_prompt_template=step_prompt_template,
+            prompt_path="prompts/baseline_text_to_image_step.md",
+            question=request.question,
+            explanation=request.explanation,
+            explanation_sentences=explanation_sentences,
+            chart_context=chart_context.model_dump(mode="json"),
+            roles_summary=roles_summary,
+            vega_lite_spec=request.vega_lite_spec,
+            rows_preview=rows_preview,
+            include_debug_prompts=bool(request.debug),
+        )
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "[/visual_desc_baseline] completed | request_id=%s steps=%d elapsed_ms=%.1f",
+            request_id, len(result.get("steps", [])), elapsed_ms,
+        )
+
+        result.pop("_debug", None)
+        return prune_nulls(result)
+
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.error(
+            "[/visual_desc_baseline] error | request_id=%s elapsed_ms=%.1f error=%s",
+            request_id, elapsed_ms, exc,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/generate_vegalite_annotation_baseline")
+async def generate_vegalite_annotation_baseline(request: GenerateGrammarRequest):
+    """Baseline: Generate annotated Vega-Lite specifications (one per sentence).
+
+    Returns N annotated specs via sequential LLM calls. Each spec is
+    cumulative: it carries forward all annotations from previous steps.
+    Response: { step_specs: [{sentenceIndex, sentence, annotated_spec, layers_added, computed_values}], warnings }
+    """
+    llm = _get_baseline_llm(app)
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    q_preview = " ".join(request.question.split())[:120]
+    logger.info('[/vegalite_annotation_baseline] request received | request_id=%s question="%s"', request_id, q_preview)
+
+    try:
+        step_prompt_template = _load_baseline_prompt("baseline_vegalite_annotation_step.md")
+
+        (
+            chart_context, context_warnings, rows_preview,
+            roles_summary, series_domain, measure_fields, explanation_sentences,
+        ) = _build_common_context(request)
+
+        result = run_baseline_vegalite_annotation(
+            llm=llm,
+            step_prompt_template=step_prompt_template,
+            prompt_path="prompts/baseline_vegalite_annotation_step.md",
+            question=request.question,
+            explanation=request.explanation,
+            explanation_sentences=explanation_sentences,
+            chart_context=chart_context.model_dump(mode="json"),
+            roles_summary=roles_summary,
+            series_domain=series_domain,
+            measure_fields=measure_fields,
+            vega_lite_spec=request.vega_lite_spec,
+            rows_preview=rows_preview,
+            include_debug_prompts=bool(request.debug),
+        )
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "[/vegalite_annotation_baseline] completed | request_id=%s steps=%d elapsed_ms=%.1f",
+            request_id, len(result.get("step_specs", [])), elapsed_ms,
+        )
+
+        result.pop("_debug", None)
+        return prune_nulls(result)
+
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.error(
+            "[/vegalite_annotation_baseline] error | request_id=%s elapsed_ms=%.1f error=%s",
+            request_id, elapsed_ms, exc,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/generate_d3_annotation_baseline", response_model=GenerateD3AnnotationBaselineResponse)
+async def generate_d3_annotation_baseline(request: GenerateGrammarRequest):
+    """Baseline: convert Vega-Lite to deterministic D3, then annotate the D3 code step by step."""
+    llm = _get_baseline_llm(app)
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    q_preview = " ".join(request.question.split())[:120]
+    logger.info('[/d3_annotation_baseline] request received | request_id=%s question="%s"', request_id, q_preview)
+
+    debug_dir: Path | None = _create_d3_annotation_debug_dir() if request.debug else None
+    chart_context_payload: Dict[str, Any] | None = None
+    context_warnings: List[str] | None = None
+    rows_preview: List[Dict[str, Any]] | None = None
+    base_chart: Dict[str, Any] | None = None
+    result_debug: Dict[str, Any] | None = None
+    final_result: Dict[str, Any] | None = None
+
+    try:
+        step_prompt_template = _load_baseline_prompt("baseline_d3_annotation_step.md")
+
+        (
+            chart_context, context_warnings, rows_preview,
+            _roles_summary, _series_domain, _measure_fields, explanation_sentences,
+        ) = _build_common_context(request)
+        chart_context_payload = chart_context.model_dump(mode="json")
+
+        base_chart = convert_vegalite_to_d3(
+            vega_lite_spec=request.vega_lite_spec,
+            data_rows=request.data_rows,
+            chart_context=chart_context,
+        )
+
+        result = run_baseline_d3_annotation(
+            llm=llm,
+            step_prompt_template=step_prompt_template,
+            prompt_path="prompts/baseline_d3_annotation_step.md",
+            question=request.question,
+            explanation=request.explanation,
+            explanation_sentences=explanation_sentences,
+            chart_context=chart_context_payload,
+            rows_preview=rows_preview,
+            base_chart=base_chart,
+            include_debug_prompts=bool(request.debug),
+        )
+        final_result = dict(result)
+        result_debug = result.pop("_debug", None)
+
+        if debug_dir is not None:
+            _persist_d3_annotation_debug_bundle(
+                debug_dir=debug_dir,
+                request=request,
+                request_id=request_id,
+                chart_context=chart_context_payload,
+                context_warnings=context_warnings,
+                rows_preview=rows_preview,
+                base_chart=base_chart,
+                result_debug=result_debug,
+                final_result=final_result,
+                error=None,
+            )
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "[/d3_annotation_baseline] completed | request_id=%s steps=%d elapsed_ms=%.1f",
+            request_id, len(result.get("step_specs", [])), elapsed_ms,
+        )
+        return prune_nulls(result)
+
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        if isinstance(exc, D3AnnotationStepValidationError):
+            result_debug = exc.debug_payload
+            final_result = exc.partial_result
+        if debug_dir is not None:
+            _persist_d3_annotation_debug_bundle(
+                debug_dir=debug_dir,
+                request=request,
+                request_id=request_id,
+                chart_context=chart_context_payload,
+                context_warnings=context_warnings,
+                rows_preview=rows_preview,
+                base_chart=base_chart,
+                result_debug=result_debug,
+                final_result=final_result,
+                error=exc,
+            )
+        logger.error(
+            "[/d3_annotation_baseline] error | request_id=%s elapsed_ms=%.1f error=%s",
+            request_id, elapsed_ms, exc,
+        )
+        if isinstance(exc, D3AnnotationStepValidationError):
+            raise HTTPException(status_code=500, detail=exc.to_detail()) from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/annotate_chart_image", response_model=AnnotateChartImageResponse)
+async def annotate_chart_image(request: AnnotateChartImageRequest):
+    """Programmatically draw annotations on a chart image using PIL/Pillow.
+
+    Accepts a base64-encoded PNG of a chart and a list of annotation steps
+    (one per explanation sentence). Returns one annotated PNG per step
+    (or only the final combined image if return_each_step=False).
+
+    Each step's annotations are cumulative: step 2 shows step 1 + step 2 elements.
+
+    Supported annotation types per step:
+      reference_line  — dashed horizontal line at a y data value
+      text_label      — text string near a data point
+      band            — shaded horizontal region between two y values
+      highlight_bar   — dim all bars except the specified categories
+      circle          — emphasis circle around a data point
+
+    chart_area must describe the plot area in pixel coordinates:
+      x, y            — top-left corner of the plot area
+      width, height   — dimensions of the plot area
+      y_min, y_max    — data range of the y-axis
+      x_categories    — ordered category labels for the x-axis (bar charts)
+    """
+    request_id = uuid.uuid4().hex[:12]
+    started_at = time.perf_counter()
+    logger.info(
+        "[/annotate_chart_image] request received | request_id=%s steps=%d return_each=%s",
+        request_id, len(request.steps), request.return_each_step,
+    )
+
+    try:
+        steps_payload = [
+            {
+                "sentence": s.sentence,
+                "annotations": [
+                    a.model_dump(exclude_none=True) for a in s.annotations
+                ],
+            }
+            for s in request.steps
+        ]
+
+        result = annotate_chart_steps(
+            image_base64=request.image_base64,
+            chart_area=request.chart_area.model_dump(),
+            steps=steps_payload,
+            return_each_step=request.return_each_step,
+        )
+
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.info(
+            "[/annotate_chart_image] completed | request_id=%s output_steps=%d warnings=%d elapsed_ms=%.1f",
+            request_id,
+            len(result.get("steps", [])),
+            len(result.get("warnings", [])),
+            elapsed_ms,
+        )
+
+        return {
+            "steps": result.get("steps", []),
+            "warnings": result.get("warnings", []),
+        }
+
+    except Exception as exc:
+        elapsed_ms = (time.perf_counter() - started_at) * 1000
+        logger.error(
+            "[/annotate_chart_image] error | request_id=%s elapsed_ms=%.1f error=%s",
+            request_id, elapsed_ms, exc,
+        )
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 if __name__ == "__main__":

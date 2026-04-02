@@ -81,3 +81,8 @@ opsspec/tests/test_grammar_taewon_human.py
 opsspec/tests/test_temp1.py
 opsspec/tests/test_temp2.py
 opsspec/tests/test_yugin_chatgpt.py
+
+baseline/
+
+CLAUDE.md
+AGENTS.md

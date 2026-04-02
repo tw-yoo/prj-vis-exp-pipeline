@@ -1,0 +1,4 @@
+{
+  "error_type": "RuntimeError",
+  "error": "D3 annotation step 1 failed validation: Only the annotation marker block may change; base chart rendering code must remain unchanged."
+}

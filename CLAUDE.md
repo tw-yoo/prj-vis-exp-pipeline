@@ -38,8 +38,8 @@
 `nlp_server`는 **(question + explanation) 자연어 텍스트**와 **Vega-Lite spec + data rows**를 입력으로 받아, 최종적으로 **OpsSpec(=grammar)** DAG를 생성해서 반환하는 서버입니다.
 
 - 출력 OpsSpec은 “legacy operation set(비-드로우)” 기반이며, 각 op에 `meta.nodeId` / `meta.inputs`가 포함되어 DAG를 복원할 수 있습니다.
-- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **opsSpec group map + draw_plan**을 함께 반환합니다:
-  - `{ "ops": [...], "ops2": [...], ..., "draw_plan": { "ops": [ { "op":"draw", ... } ], ... } }`
+- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **opsSpec group map + draw_plan + execution plans**를 함께 반환합니다:
+  - `{ "ops": [...], "ops2": [...], ..., "draw_plan": { ... }, "execution_plan": { ... }, "visual_execution_plan": { ... } }`
 
 ---
 
@@ -91,8 +91,15 @@ Endpoint 구현:
 - `GET /health`
 - `GET /op_registry` (op 계약/스키마 힌트)
 - `POST /generate_grammar` (recursive pipeline, opsSpec + draw_plan 응답)
+- `POST /compile_ops_plan` (기존 opsSpec group map을 canonicalize/schedule 후 draw_plan + execution plans로 컴파일)
 - `POST /run_module_trace` (inventory + steps + ops_spec + trace 반환)
 - `POST /run_python_plan` (시나리오 파일로 grammar+draw plan 생성)
+- `POST /answer_question` (spec/csv 경로 입력으로 plan + answer + explanation 생성)
+- `POST /generate_grammar_baseline_single_shot` (single-shot baseline OpsSpec 생성)
+- `POST /generate_visual_desc_baseline` (sentence별 누적 image prompt baseline)
+- `POST /generate_vegalite_annotation_baseline` (sentence별 누적 Vega-Lite annotation baseline)
+- `POST /generate_d3_annotation_baseline` (deterministic Vega-Lite→D3 후 sentence별 annotation baseline)
+- `POST /annotate_chart_image` (baseline 결과를 raster image annotation으로 렌더링)
 - `POST /canonicalize_opsspec` (별도 유틸; pipeline 내부에서는 id 재작성 canonicalize를 사용하지 않음)
 - `POST /generate_lambda` (별도 레거시 경로; grammar 파이프라인과 분리)
 
@@ -162,17 +169,23 @@ Cross-node scalar reference:
 ## 6) Debug 번들(연구 재현성)
 
 **모든 요청(성공/실패)** 에서 번들을 저장합니다. 실패 시 `99_error.json`을 포함하며, 성공 시에는 모든 단계 JSON + trace 마크다운이 남습니다.
-`/generate_grammar`는 draw_plan을 항상 포함해 응답합니다. `trace`는 `/run_module_trace` 응답에서 확인합니다.
+`/generate_grammar`는 `draw_plan`, `execution_plan`, `visual_execution_plan`을 함께 반환합니다. `trace` 객체는 `debug=true`일 때 응답에 포함되고, 구조화 trace 조회용 엔드포인트는 `/run_module_trace`입니다.
 
 저장 위치:
 - `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/debug/<MMddhhmm>/`
 
 대표 파일:
+- `00_trace.md` (inventory 변화 + step별 트리 스냅샷)
 - `00_request.json`, `01_context.json`, `02_inventory.json`
 - per-step: `03_step_01_compose.json`, `04_step_01_grounded.json`, `05_step_01_op.json`, `06_step_01_exec.json`
 - `90_final_grammar.json`
+- `92_human_abstracted_ops_spec.json`
 - `91_tree_ops_spec.dot` (+ Graphviz 있으면 `.svg/.png`)
 - `95_draw_plan.json` (옵션), `99_error.json` (실패 시)
+
+baseline D3 annotation은 별도 debug 번들을 사용합니다.
+- 저장 위치: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/debug_d3_annotation/<MMddhhmm>/`
+- 조건: `POST /generate_d3_annotation_baseline` 호출 시 `debug=true`
 
 ---
 
@@ -187,3 +200,20 @@ Cross-node scalar reference:
 
 원칙:
 - pipeline/recursive validators는 계약(JSON)을 동적으로 사용하므로, op_registry만 업데이트하면 prompt/validator에 자동 반영되도록 유지합니다.
+
+---
+
+## 8) 확인된 워크플로 / 커맨드
+
+- 서버 실행:
+  - `python main.py`
+  - `uvicorn`으로 `0.0.0.0:3000`, `reload=True`로 실행됩니다.
+- image annotation helper 기본 서버 주소:
+  - `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/module_annotation_request_builder.py`
+  - 기본값 `server_url="http://localhost:3000"`
+- 집중 테스트 예시(환경에 `pytest`가 있을 때):
+  - `python -m pytest opsspec/tests/test_recursive_pipeline.py`
+  - `python -m pytest opsspec/tests/test_d3_annotation_endpoint.py`
+  - `python -m pytest opsspec/tests/test_vegalite_to_d3.py`
+- TODO:
+  - 의존성 설치/부트스트랩 커맨드는 repo 문서에서 명시적으로 확인되지 않았으므로 여기서 새로 적지 않습니다.

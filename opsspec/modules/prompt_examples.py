@@ -442,6 +442,194 @@ def build_inventory_few_shot_examples(
     return FewShotBundle(text="\n".join(lines).strip(), ids=used_ids)
 
 
+def _format_single_shot_example_output(spec: Dict[str, List[OperationSpec]]) -> str:
+    """Format a complete OpsSpec group map with id/meta for single-shot baseline."""
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for group_name in sorted(spec.keys(), key=_group_sort_key):
+        ops_list: List[Dict[str, Any]] = []
+        for op in spec.get(group_name, []):
+            node = op.model_dump(mode="json", exclude_none=True, by_alias=True)
+            node.pop("chartId", None)
+            node.pop("_group", None)
+            ops_list.append(node)
+        ops_list.sort(key=_node_sort_key)
+        result[group_name] = ops_list
+    return json.dumps(result, ensure_ascii=False, indent=2)
+
+
+def build_single_shot_few_shot_examples(
+    *,
+    question: str,
+    explanation: str,
+    chart_context: Dict[str, JsonValue],
+    max_examples: int = 4,
+    max_chars: int = 9000,
+) -> FewShotBundle:
+    """Build few-shot examples for the single-shot OpsSpec baseline.
+
+    Each example shows the complete grouped OpsSpec output (with id, meta).
+    """
+    selected = _pick_examples(
+        question=question,
+        explanation=explanation,
+        chart_context=chart_context,
+        max_examples=max_examples,
+    )
+    if not selected:
+        return FewShotBundle(text="(no few-shot examples available)", ids=[])
+
+    lines: List[str] = []
+    used_ids: List[str] = []
+    for idx, ex in enumerate(selected, start=1):
+        block = [
+            f"[SingleShot Example {idx} | id={ex.ex_id}]",
+            f"Question: {ex.question}",
+            f"Explanation: {ex.explanation}",
+            f"ChartContextSummary: {json.dumps(_context_summary(ex.chart_context), ensure_ascii=False)}",
+            "ExpectedOpsSpecJSON:",
+            _format_single_shot_example_output(ex.spec),
+            "",
+        ]
+        candidate = "\n".join(lines + block).strip()
+        if len(candidate) > max_chars and lines:
+            break
+        lines.extend(block)
+        used_ids.append(ex.ex_id)
+    return FewShotBundle(text="\n".join(lines).strip(), ids=used_ids)
+
+
+def _format_text_to_image_example(
+    ex: _ExampleRecord,
+) -> str:
+    """Format an example as a text-to-image description reference."""
+    nodes = _flatten_nodes(ex.spec)
+    steps: List[Dict[str, Any]] = []
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", ex.explanation) if s.strip()]
+    # Group nodes by sentenceIndex
+    groups: Dict[int, List[Dict[str, Any]]] = {}
+    for node in nodes:
+        si = (node.get("meta") or {}).get("sentenceIndex", 1)
+        groups.setdefault(si, []).append(node)
+
+    for si in sorted(groups.keys()):
+        sent = sentences[si - 1] if si <= len(sentences) else ex.explanation
+        elements: List[str] = []
+        for node in groups[si]:
+            op = node.get("op", "")
+            if op in ("filter", "findExtremum", "retrieveValue", "nth", "setOp"):
+                elements.append(f"highlight relevant data elements for {op}")
+            elif op in ("average", "sum", "count"):
+                elements.append(f"add reference line and text label for {op} result")
+            elif op in ("diff", "compare", "compareBool"):
+                elements.append(f"add connecting arrow and difference label for {op}")
+            else:
+                elements.append(f"annotate chart for {op}")
+        steps.append({
+            "sentenceIndex": si,
+            "explanation_sentence": sent,
+            "visual_elements": elements,
+        })
+    return json.dumps(steps, ensure_ascii=False, indent=2)
+
+
+def build_text_to_image_few_shot_examples(
+    *,
+    question: str,
+    explanation: str,
+    chart_context: Dict[str, JsonValue],
+    max_examples: int = 3,
+    max_chars: int = 7000,
+) -> FewShotBundle:
+    """Build few-shot examples for the text-to-image baseline."""
+    selected = _pick_examples(
+        question=question,
+        explanation=explanation,
+        chart_context=chart_context,
+        max_examples=max_examples,
+    )
+    if not selected:
+        return FewShotBundle(text="(no few-shot examples available)", ids=[])
+
+    lines: List[str] = []
+    used_ids: List[str] = []
+    for idx, ex in enumerate(selected, start=1):
+        block = [
+            f"[TextToImage Example {idx} | id={ex.ex_id}]",
+            f"Question: {ex.question}",
+            f"Explanation: {ex.explanation}",
+            f"ChartContextSummary: {json.dumps(_context_summary(ex.chart_context), ensure_ascii=False)}",
+            "ExpectedSteps:",
+            _format_text_to_image_example(ex),
+            "",
+        ]
+        candidate = "\n".join(lines + block).strip()
+        if len(candidate) > max_chars and lines:
+            break
+        lines.extend(block)
+        used_ids.append(ex.ex_id)
+    return FewShotBundle(text="\n".join(lines).strip(), ids=used_ids)
+
+
+def build_vegalite_annotation_few_shot_examples(
+    *,
+    question: str,
+    explanation: str,
+    chart_context: Dict[str, JsonValue],
+    max_examples: int = 3,
+    max_chars: int = 7000,
+) -> FewShotBundle:
+    """Build few-shot examples for the Vega-Lite annotation baseline.
+
+    Since we don't store annotated Vega-Lite specs in example.csv,
+    we show the OpsSpec as annotation intent reference.
+    """
+    selected = _pick_examples(
+        question=question,
+        explanation=explanation,
+        chart_context=chart_context,
+        max_examples=max_examples,
+    )
+    if not selected:
+        return FewShotBundle(text="(no few-shot examples available)", ids=[])
+
+    lines: List[str] = []
+    used_ids: List[str] = []
+    for idx, ex in enumerate(selected, start=1):
+        nodes = _flatten_nodes(ex.spec)
+        # Build annotation summary from OpsSpec
+        summary: List[Dict[str, Any]] = []
+        groups: Dict[int, List[str]] = {}
+        for node in nodes:
+            si = (node.get("meta") or {}).get("sentenceIndex", 1)
+            op = node.get("op", "")
+            desc = f"{op}"
+            field = node.get("field")
+            if field:
+                desc += f" on {field}"
+            groups.setdefault(si, []).append(desc)
+        for si in sorted(groups.keys()):
+            summary.append({
+                "sentenceIndex": si,
+                "annotation_intent": groups[si],
+            })
+
+        block = [
+            f"[VegaLiteAnnotation Example {idx} | id={ex.ex_id}]",
+            f"Question: {ex.question}",
+            f"Explanation: {ex.explanation}",
+            f"ChartContextSummary: {json.dumps(_context_summary(ex.chart_context), ensure_ascii=False)}",
+            "AnnotationIntentSummary:",
+            json.dumps(summary, ensure_ascii=False, indent=2),
+            "",
+        ]
+        candidate = "\n".join(lines + block).strip()
+        if len(candidate) > max_chars and lines:
+            break
+        lines.extend(block)
+        used_ids.append(ex.ex_id)
+    return FewShotBundle(text="\n".join(lines).strip(), ids=used_ids)
+
+
 def build_step_compose_few_shot_examples(
     *,
     question: str,

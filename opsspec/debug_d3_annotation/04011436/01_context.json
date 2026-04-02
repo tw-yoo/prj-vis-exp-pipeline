@@ -1,0 +1,121 @@
+{
+  "chart_context": {
+    "fields": [
+      "Year",
+      "Revenue multiple"
+    ],
+    "dimension_fields": [
+      "Year"
+    ],
+    "measure_fields": [
+      "Revenue multiple"
+    ],
+    "primary_dimension": "Year",
+    "primary_measure": "Revenue multiple",
+    "categorical_values": {
+      "Year": [
+        "2006",
+        "2007",
+        "2008",
+        "2009",
+        "2010",
+        "2011",
+        "2012",
+        "2013",
+        "2014",
+        "2015",
+        "2016",
+        "2017",
+        "2018",
+        "2019",
+        "2020"
+      ]
+    },
+    "field_types": {
+      "Year": "categorical",
+      "Revenue multiple": "numeric"
+    },
+    "numeric_stats": {
+      "Revenue multiple": {
+        "min": 3.97,
+        "max": 6.39,
+        "mean": 5.068
+      }
+    },
+    "mark": "bar",
+    "is_stacked": false,
+    "encoding_summary": {
+      "y": {
+        "field": "Revenue multiple",
+        "type": "quantitative"
+      },
+      "x": {
+        "field": "Year",
+        "type": "nominal"
+      }
+    }
+  },
+  "context_warnings": [],
+  "rows_preview": [
+    {
+      "Year": "2006",
+      "Revenue multiple": 4.66
+    },
+    {
+      "Year": "2007",
+      "Revenue multiple": 4.69
+    },
+    {
+      "Year": "2008",
+      "Revenue multiple": 4.68
+    },
+    {
+      "Year": "2009",
+      "Revenue multiple": 4.41
+    },
+    {
+      "Year": "2010",
+      "Revenue multiple": 4.08
+    },
+    {
+      "Year": "2011",
+      "Revenue multiple": 3.97
+    },
+    {
+      "Year": "2012",
+      "Revenue multiple": 4.01
+    },
+    {
+      "Year": "2013",
+      "Revenue multiple": 4.07
+    },
+    {
+      "Year": "2014",
+      "Revenue multiple": 4.77
+    },
+    {
+      "Year": "2015",
+      "Revenue multiple": 5.67
+    },
+    {
+      "Year": "2016",
+      "Revenue multiple": 6.16
+    },
+    {
+      "Year": "2017",
+      "Revenue multiple": 6.14
+    },
+    {
+      "Year": "2018",
+      "Revenue multiple": 6.01
+    },
+    {
+      "Year": "2019",
+      "Revenue multiple": 6.31
+    },
+    {
+      "Year": "2020",
+      "Revenue multiple": 6.39
+    }
+  ]
+}
