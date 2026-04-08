@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class OpsMetaView(BaseModel):
-    split: Optional[Literal["vertical", "horizontal", "none"]] = None
     splitGroup: Optional[str] = None
     panelId: Optional[str] = None
     joinBarrier: Optional[bool] = None
-    align: Optional[Literal["x", "y", "none"]] = None
-    highlight: Optional[bool] = None
-    reference_line: Optional[bool] = None
-    note: Optional[str] = None
     phase: Optional[int] = None
     parallelGroup: Optional[str] = None
 

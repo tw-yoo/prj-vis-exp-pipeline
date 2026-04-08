@@ -100,7 +100,6 @@ def render_inventory_prompt(
     shared_rules: str,
     question: str,
     explanation: str,
-    explanation_sentences: List[str],
     chart_context: Dict[str, JsonValue],
     roles_summary: Dict[str, JsonValue],
     series_domain: List[JsonValue],
@@ -114,7 +113,6 @@ def render_inventory_prompt(
         shared_rules=shared_rules,
         question=question,
         explanation=explanation,
-        explanation_sentences_json=json.dumps(explanation_sentences, ensure_ascii=True, indent=2),
         roles_summary_json=json.dumps(roles_summary, ensure_ascii=True, indent=2),
         series_domain_json=json.dumps(series_domain, ensure_ascii=True, indent=2),
         measure_fields_json=json.dumps(measure_fields, ensure_ascii=True, indent=2),
@@ -146,13 +144,11 @@ def run_inventory_module(
     include_debug_prompts: bool = False,
 ) -> Dict[str, Any]:
     validation_feedback = validation_feedback or []
-    explanation_sentences = split_explanation_sentences(explanation)
     user_prompt = render_inventory_prompt(
         prompt_template=prompt_template,
         shared_rules=shared_rules,
         question=question,
         explanation=explanation,
-        explanation_sentences=explanation_sentences,
         chart_context=chart_context,
         roles_summary=roles_summary,
         series_domain=series_domain,

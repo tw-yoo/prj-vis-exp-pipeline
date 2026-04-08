@@ -41,14 +41,10 @@ from .models import (
     DrawSumSpec,
     DrawStackedFilterGroupsOp,
     DrawStyle,
-    DrawSplitOp,
-    DrawSplitPanelSelector,
-    DrawSplitSpec,
     DrawTextNormalizedPosition,
     DrawTextOp,
     DrawTextSpec,
     DrawTextStyle,
-    DrawUnsplitOp,
     dump_draw_groups,
 )
 
@@ -67,7 +63,6 @@ SCALAR_TEXT_OPS: Set[str] = {"average", "diff", "count", "compare", "compareBool
 SUM_OPS: Set[str] = {"sum"}
 RANGE_BAND_OPS: Set[str] = {"determineRange"}
 CONNECT_OPS: Set[str] = {"compare", "diff"}
-JOIN_KEEP_SPLIT_OPS: Set[str] = {"diff", "compare", "count"}
 LINE_ANCHORED_TEXT_OPS: Set[str] = {"average", "diff", "compare", "findExtremum"}
 TEXT_ABOVE_LINE_GAP_NORM = 0.03125
 
@@ -490,167 +485,6 @@ def _index_nodes(ops_spec: Dict[str, List[OperationSpec]]) -> Dict[str, Operatio
     return node_map
 
 
-def _supports_split(chart_kind: ChartKind) -> bool:
-    return chart_kind in {"simple_bar", "grouped_bar", "stacked_bar", "simple_line", "multi_line"}
-
-
-def _infer_selector_values(op: OperationSpec) -> List[str]:
-    if isinstance(op, FilterOp):
-        if isinstance(op.include, list) and op.include:
-            return [str(value) for value in op.include if value is not None]
-        group = getattr(op, "group", None)
-        if isinstance(group, str) and group:
-            return [group]
-        if isinstance(group, list):
-            return [str(value) for value in group if value is not None]
-        return []
-
-    if isinstance(op, RetrieveValueOp):
-        target = getattr(op, "target", None)
-        if target is None:
-            return []
-        if isinstance(target, list):
-            return [str(value) for value in target if value is not None and not str(value).startswith("ref:")]
-        if isinstance(target, (str, int, float)) and not str(target).startswith("ref:"):
-            return [str(target)]
-
-    group = getattr(op, "group", None)
-    if isinstance(group, str) and group:
-        return [group]
-    if isinstance(group, list):
-        return [str(value) for value in group if value is not None]
-    return []
-
-
-def _infer_panel_selector(op: OperationSpec) -> DrawSplitPanelSelector:
-    if isinstance(op, FilterOp):
-        include = [str(value) for value in list(getattr(op, "include", []) or []) if value is not None]
-        exclude = [str(value) for value in list(getattr(op, "exclude", []) or []) if value is not None]
-        if include:
-            return DrawSplitPanelSelector(include=include)
-        if exclude:
-            return DrawSplitPanelSelector(exclude=exclude)
-    selector_values = _infer_selector_values(op)
-    if selector_values:
-        return DrawSplitPanelSelector(include=selector_values)
-    return DrawSplitPanelSelector(all=True)
-
-
-def _is_include_selector(selector: DrawSplitPanelSelector | None) -> bool:
-    if selector is None:
-        return False
-    include = list(selector.include or [])
-    if not include:
-        return False
-    return not (selector.exclude or selector.all)
-
-
-def _join_policy_for_operation(op_name: str) -> str:
-    token = str(op_name or "").strip()
-    if token in JOIN_KEEP_SPLIT_OPS:
-        return "keep-split"
-    return "merge"
-
-
-def _infer_split_plans(
-    ops_spec: Dict[str, List[OperationSpec]],
-    *,
-    chart_kind: ChartKind,
-) -> Dict[str, Dict[str, Any]]:
-    if not _supports_split(chart_kind):
-        return {}
-
-    node_map = _index_nodes(ops_spec)
-    edges = _collect_edges(ops_spec)
-    split_members: Dict[str, Dict[str, Set[str]]] = {}
-    join_inputs: Dict[str, List[str]] = {}
-    join_orientations: Dict[str, str] = {}
-
-    for node_id, op in node_map.items():
-        view = op.meta.view if op.meta else None
-        if not view or not view.splitGroup:
-            continue
-        split_group = str(view.splitGroup)
-        if view.joinBarrier:
-            join_inputs[split_group] = sorted(list(edges.get(node_id, set())), key=_node_sort_key)
-            orientation = _normalize_orientation(getattr(view, "split", None))
-            if orientation is not None:
-                join_orientations[split_group] = orientation
-            continue
-        panel_id = str(view.panelId or "")
-        if not panel_id:
-            continue
-        split_members.setdefault(split_group, {}).setdefault(panel_id, set()).add(node_id)
-
-    split_plans: Dict[str, Dict[str, Any]] = {}
-    for split_group, panels in split_members.items():
-        if sorted(panels.keys()) != ["left", "right"]:
-            continue
-
-        groups_payload: Dict[str, List[str]] = {}
-        selectors_payload: Dict[str, DrawSplitPanelSelector] = {}
-        root_nodes_by_panel: Dict[str, str] = {}
-        valid = True
-        for panel_id in ("left", "right"):
-            branch_nodes = panels.get(panel_id, set())
-            roots = [
-                node_id
-                for node_id in sorted(branch_nodes, key=_node_sort_key)
-                if not (edges.get(node_id, set()) & branch_nodes)
-            ]
-            if len(roots) != 1:
-                valid = False
-                break
-            root_op = node_map.get(roots[0])
-            if root_op is None:
-                valid = False
-                break
-            root_nodes_by_panel[panel_id] = str(roots[0])
-            selectors_payload[panel_id] = _infer_panel_selector(root_op)
-            selector_values = _infer_selector_values(root_op)
-            if selector_values:
-                groups_payload[panel_id] = selector_values
-
-        join_parents = join_inputs.get(split_group) or []
-        if not valid or len(selectors_payload) != 2 or len(join_parents) != 2:
-            continue
-
-        left_selector = selectors_payload.get("left")
-        right_selector = selectors_payload.get("right")
-        domain_mode = (
-            _is_include_selector(left_selector)
-            and _is_include_selector(right_selector)
-            and not (set(left_selector.include or []) & set(right_selector.include or []))
-        )
-
-        if domain_mode:
-            split_spec = DrawSplitSpec(
-                mode="domain",
-                by="x",
-                groups={
-                    "left": [str(v) for v in list(left_selector.include or [])],
-                    "right": [str(v) for v in list(right_selector.include or [])],
-                },
-                orientation=join_orientations.get(split_group, "horizontal"),
-            )
-        else:
-            split_spec = DrawSplitSpec(
-                mode="selector",
-                by="x",
-                selectors=selectors_payload,
-                orientation=join_orientations.get(split_group, "horizontal"),
-            )
-
-        split_plans[split_group] = {
-            "split": split_spec,
-            "join_inputs": join_parents,
-            "split_node_id": f"{split_group}_split",
-            "root_nodes": root_nodes_by_panel,
-            "root_targets": groups_payload,
-        }
-    return split_plans
-
-
 def build_draw_ops_spec(
     *,
     ops_spec: Dict[str, List[OperationSpec]],
@@ -669,7 +503,6 @@ def build_draw_ops_spec(
     """
     chart_kind = derive_chart_kind(vega_lite_spec, chart_context)
     group_filter_action = _group_filter_action(chart_kind)
-    split_plans = _infer_split_plans(ops_spec, chart_kind=chart_kind)
 
     executor = OpsSpecExecutor(chart_context)
     executor.execute(rows=data_rows, ops_spec=ops_spec)
@@ -679,7 +512,6 @@ def build_draw_ops_spec(
     primary_dim = chart_context.primary_dimension
     primary_domain = [str(v) for v in chart_context.categorical_values.get(primary_dim, [])] if primary_dim else []
     primary_domain_set = set(primary_domain)
-    active_splits: Set[str] = set()
     scalar_anchors: Dict[str, Dict[str, Any]] = {}
 
     ordered_groups = _ordered_groups(ops_spec.keys())
@@ -699,44 +531,6 @@ def build_draw_ops_spec(
                 continue
 
             meta = _build_meta(op)
-            view = op.meta.view if op.meta else None
-            split_group = str(view.splitGroup) if view and view.splitGroup else None
-            panel_id = str(view.panelId) if view and view.panelId else None
-            split_plan = split_plans.get(split_group or "") if split_group else None
-            draw_chart_id = panel_id if split_plan and split_group in active_splits else None
-            extra_inputs: List[str] = []
-            if split_plan and panel_id and split_group not in active_splits:
-                draw_ops.append(
-                    DrawSplitOp(
-                        meta=DrawMeta(
-                            source="python-draw-plan",
-                            nodeId=str(split_plan["split_node_id"]),
-                            inputs=[],
-                        ),
-                        split=split_plan["split"],
-                    )
-                )
-                active_splits.add(split_group)
-                draw_chart_id = panel_id
-            if split_plan and panel_id and split_group in active_splits:
-                extra_inputs.append(str(split_plan["split_node_id"]))
-            is_join_barrier = bool(view and view.joinBarrier and split_plan and split_group in active_splits)
-            join_policy = _join_policy_for_operation(op_name) if is_join_barrier else None
-            if is_join_barrier and join_policy == "merge":
-                split_node_id = str(split_plan["split_node_id"])
-                unsplit_node_id = f"{split_group}_unsplit_{node_id}"
-                draw_ops.append(
-                    DrawUnsplitOp(
-                        meta=DrawMeta(
-                            source="python-draw-plan",
-                            nodeId=unsplit_node_id,
-                            sentenceIndex=meta.sentenceIndex,
-                            inputs=[split_node_id],
-                        )
-                    )
-                )
-                active_splits.discard(str(split_group))
-                draw_chart_id = None
 
             op_group = getattr(op, "group", None)
             scoped = bool(op_group and isinstance(op_group, str) and op_group.strip() and group_filter_action)
@@ -750,8 +544,8 @@ def build_draw_ops_spec(
                                 meta=meta,
                                 groupFilter=DrawGroupFilterSpec(groups=[str(op_group)]),
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
                 else:
@@ -761,8 +555,8 @@ def build_draw_ops_spec(
                                 meta=meta,
                                 groupFilter=DrawGroupFilterSpec(groups=[str(op_group)]),
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 
@@ -777,22 +571,7 @@ def build_draw_ops_spec(
                         # In scoped stacked/grouped flow, extremum should keep series color semantics.
                         # The extremum cue is provided by line/text, not fill replacement.
                         targets = []
-                    suppress_split_root_filter_highlight = False
-                    if (
-                        op_name == "filter"
-                        and split_plan
-                        and panel_id
-                        and split_group in active_splits
-                    ):
-                        root_nodes = split_plan.get("root_nodes", {})
-                        root_targets_map = split_plan.get("root_targets", {})
-                        root_node_id = str(root_nodes.get(panel_id, "") or "")
-                        root_targets = [
-                            str(value) for value in list(root_targets_map.get(panel_id, []) or []) if value is not None
-                        ]
-                        if root_node_id and str(node_id) == root_node_id and root_targets:
-                            suppress_split_root_filter_highlight = set(str(v) for v in targets) == set(root_targets)
-                    if targets and not suppress_split_root_filter_highlight:
+                    if targets:
                         draw_ops.append(
                             _with_draw_context(
                                 DrawHighlightOp(
@@ -800,8 +579,8 @@ def build_draw_ops_spec(
                                     select=DrawSelect(keys=targets),
                                     style=DrawStyle(color="#ef4444", opacity=1.0),
                                 ),
-                                chart_id=draw_chart_id,
-                                extra_inputs=extra_inputs,
+                                chart_id=None,
+                                extra_inputs=[],
                             )
                         )
 
@@ -811,8 +590,8 @@ def build_draw_ops_spec(
                     draw_ops.append(
                         _with_draw_context(
                             DrawBandOp(meta=meta, band=band),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 
@@ -840,8 +619,8 @@ def build_draw_ops_spec(
                                         ),
                                     ),
                                 ),
-                                chart_id=draw_chart_id,
-                                extra_inputs=extra_inputs,
+                                chart_id=None,
+                                extra_inputs=[],
                             )
                         )
 
@@ -851,8 +630,8 @@ def build_draw_ops_spec(
                     draw_ops.append(
                         _with_draw_context(
                             DrawSumOp(meta=meta, sum=DrawSumSpec(value=float(scalar), label="Sum")),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 
@@ -901,7 +680,7 @@ def build_draw_ops_spec(
                                         ),
                                     ),
                                     chart_id=None,
-                                    extra_inputs=extra_inputs,
+                                    extra_inputs=[],
                                 )
                             )
                             delta_scalar = _resolve_scalar(result_rows)
@@ -939,7 +718,7 @@ def build_draw_ops_spec(
                                         ),
                                     ),
                                     chart_id=None,
-                                    extra_inputs=extra_inputs,
+                                    extra_inputs=[],
                                 )
                             )
                             emitted_panel_scalar_bridge = True
@@ -990,8 +769,8 @@ def build_draw_ops_spec(
                                             style=style,
                                         ),
                                     ),
-                                    chart_id=draw_chart_id,
-                                    extra_inputs=extra_inputs,
+                                    chart_id=None,
+                                    extra_inputs=[],
                                 )
                             )
                             draw_ops.append(
@@ -1019,8 +798,8 @@ def build_draw_ops_spec(
                                             style=style,
                                         ),
                                     ),
-                                    chart_id=draw_chart_id,
-                                    extra_inputs=extra_inputs,
+                                    chart_id=None,
+                                    extra_inputs=[],
                                 )
                             )
                             emitted_scalar_panel_diff = True
@@ -1035,8 +814,8 @@ def build_draw_ops_spec(
                         draw_ops.append(
                             _with_draw_context(
                                 connector,
-                                chart_id=draw_chart_id,
-                                extra_inputs=extra_inputs,
+                                chart_id=None,
+                                extra_inputs=[],
                             )
                         )
 
@@ -1045,8 +824,8 @@ def build_draw_ops_spec(
                     draw_ops.append(
                         _with_draw_context(
                             line_op,
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 
@@ -1065,8 +844,8 @@ def build_draw_ops_spec(
                                     style=DrawLineStyle(stroke="#0ea5e9", strokeWidth=2.0, opacity=0.9),
                                 ),
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 
@@ -1084,8 +863,8 @@ def build_draw_ops_spec(
                                     style=DrawLineStyle(stroke="#ef4444", strokeWidth=2.0, opacity=1.0),
                                 ),
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 
@@ -1114,46 +893,18 @@ def build_draw_ops_spec(
                                 line_norm_y=line_norm_y,
                                 label_override=label_override,
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
-                    if is_join_barrier and join_policy == "keep-split" and op_name == "count":
-                        draw_ops.append(
-                            _with_draw_context(
-                                DrawTextOp(
-                                    meta=meta,
-                                    text=DrawTextSpec(
-                                        value=f"count sum: {int(round(float(scalar)))}",
-                                        mode="normalized",
-                                        position=DrawTextNormalizedPosition(x=0.5, y=0.95),
-                                        style=DrawTextStyle(
-                                            color="#111827",
-                                            fontSize=12,
-                                            fontWeight="bold",
-                                            opacity=1.0,
-                                        ),
-                                    ),
-                                ),
-                                chart_id=None,
-                                extra_inputs=extra_inputs,
-                            )
-                        )
-
             if op_name in {"average", "count", "add", "scale", "sum", "findExtremum", "retrieveValue"}:
                 scalar_value = _resolve_scalar(result_rows)
                 if scalar_value is not None:
-                    orientation_hint = None
-                    if split_plan:
-                        orientation_hint = _normalize_orientation(
-                            getattr(split_plan.get("split"), "orientation", None)
-                        )
                     scalar_anchors[str(node_id)] = {
                         "node_id": str(node_id),
-                        "chart_id": draw_chart_id,
+                        "chart_id": None,
                         "value": float(scalar_value),
-                        "split_group": split_group,
-                        "orientation": orientation_hint,
+                        "orientation": None,
                     }
 
             if scoped and group_filter_action and op_name != "filter":
@@ -1164,8 +915,8 @@ def build_draw_ops_spec(
                                 meta=meta,
                                 groupFilter=DrawGroupFilterSpec(reset=True),
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
                 else:
@@ -1175,8 +926,8 @@ def build_draw_ops_spec(
                                 meta=meta,
                                 groupFilter=DrawGroupFilterSpec(reset=True),
                             ),
-                            chart_id=draw_chart_id,
-                            extra_inputs=extra_inputs,
+                            chart_id=None,
+                            extra_inputs=[],
                         )
                     )
 

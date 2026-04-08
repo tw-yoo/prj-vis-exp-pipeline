@@ -140,7 +140,7 @@ def _validate_step_compose_group_semantics(
         return
     if _SENTENCE_LAYER_GROUP_RE.fullmatch(token):
         errors.append(
-            f'{op_name}.group "{token}" is invalid; sentence-layer tokens (ops/ops2/...) are not series values.'
+            f'{op_name}.group "{token}" is invalid; chunk-layer tokens (ops/ops2/...) are not series values.'
         )
         return
 
@@ -160,6 +160,65 @@ def _validate_step_compose_group_semantics(
             errors.append(
                 f'{op_name}.group "{token}" is outside series domain for field "{chart_context.series_field}". '
                 "for year subsets, use filter(include=[...]) + average(inputs=[filter_node])."
+            )
+
+
+def _validate_inventory_group_semantics(
+    *,
+    op_name: str,
+    params_hint: Dict[str, Any],
+    chart_context: Optional[ChartContext],
+    errors: List[str],
+    task_index: int,
+) -> None:
+    if op_name not in _STRICT_SINGLE_GROUP_OPS:
+        return
+    if "group" not in params_hint:
+        return
+
+    raw_group = params_hint.get("group")
+    if raw_group is None:
+        return
+    if isinstance(raw_group, list):
+        errors.append(
+            f'tasks[{task_index}].paramsHint["group"] for op "{op_name}" must be a single series value string (not list). '
+            'For dimension subsets, emit a filter task with include/exclude/between and let the aggregate consume that subset.'
+        )
+        return
+    if not isinstance(raw_group, str):
+        errors.append(
+            f'tasks[{task_index}].paramsHint["group"] for op "{op_name}" must be a non-empty string.'
+        )
+        return
+
+    token = raw_group.strip()
+    if not token:
+        errors.append(
+            f'tasks[{task_index}].paramsHint["group"] for op "{op_name}" must be a non-empty string.'
+        )
+        return
+    if _SENTENCE_LAYER_GROUP_RE.fullmatch(token):
+        errors.append(
+            f'tasks[{task_index}].paramsHint["group"] for op "{op_name}" cannot use chunk-layer tokens such as "{token}".'
+        )
+        return
+
+    if chart_context is None:
+        return
+    if not chart_context.series_field:
+        errors.append(
+            f'tasks[{task_index}].paramsHint["group"] for op "{op_name}" is invalid because chart_context.series_field is empty. '
+            'For dimension subsets, emit a filter task and have the aggregate consume that filtered subset.'
+        )
+        return
+
+    domain = chart_context.categorical_values.get(chart_context.series_field, [])
+    if domain:
+        domain_set = {str(v) for v in domain}
+        if token not in domain_set:
+            errors.append(
+                f'tasks[{task_index}].paramsHint["group"]="{token}" for op "{op_name}" is outside the series domain '
+                f'for field "{chart_context.series_field}". Use filter/include for dimension subsets instead.'
             )
 
 
@@ -229,8 +288,8 @@ def validate_inventory(
     inventory.tasks = kept_tasks
 
     task_ids = [t.taskId for t in inventory.tasks]
-    if not inventory.tasks:
-        errors.append("inventory.tasks must not be empty.")
+    if not inventory.tasks and not inventory.warnings:
+        errors.append("inventory.tasks must not be empty unless warnings explain why no meaningful chunk produced an op.")
     if len(set(task_ids)) != len(task_ids):
         errors.append("inventory.taskId must be unique.")
 
@@ -245,6 +304,14 @@ def validate_inventory(
                 errors.append(f'tasks[{idx}].paramsHint has forbidden key "{key}" for op "{task.op}".')
             if not _is_flat_value(value):
                 errors.append(f'tasks[{idx}].paramsHint["{key}"] must be a scalar or list of scalars.')
+
+        _validate_inventory_group_semantics(
+            op_name=task.op,
+            params_hint=task.paramsHint or {},
+            chart_context=chart_context,
+            errors=errors,
+            task_index=idx,
+        )
 
         # Series restriction: do not allow filter on series_field at all.
         if task.op == "filter":

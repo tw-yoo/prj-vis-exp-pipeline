@@ -54,7 +54,7 @@ def _normalize_series_group_for_single_group_ops(
         raise ValueError(f"{op_name}.group must be a non-empty string.")
     if _SENTENCE_LAYER_GROUP_RE.fullmatch(token):
         raise ValueError(
-            f'{op_name}.group "{token}" is invalid: sentence-layer tokens (ops/ops2/...) are not series values.'
+            f'{op_name}.group "{token}" is invalid: chunk-layer tokens (ops/ops2/...) are not series values.'
         )
 
     series_field = chart_context.series_field

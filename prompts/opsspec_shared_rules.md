@@ -21,12 +21,15 @@ Shared rules (apply to ALL modules):
 - In Step-Compose output, NEVER include: "id", "meta", "chartId".
 - The pipeline assigns id/meta deterministically.
 
-6) Sentence-layer grouping:
-- Group names represent explanation sentence layers, not series branches.
+6) Meaningful-chunk grouping:
+- Group names represent ordered reasoning chunks, not grammatical sentences and not series branches.
+- sentenceIndex is a legacy field name; interpret it as chunk order.
 - The pipeline maps:
-  - sentenceIndex=1 -> group "ops"
-  - sentenceIndex=k (k>=2) -> group "ops{k}" (examples: "ops2", "ops3", "ops10")
+  - chunkIndex=1 -> group "ops"
+  - chunkIndex=k (k>=2) -> group "ops{k}" (examples: "ops2", "ops3", "ops10")
 - Do NOT use a "last" group.
+- If a text span does not require a new visual/computational step, do NOT create a standalone op just to preserve chunk count.
+- Instead, absorb rhetorical bridge / transition / interpretation-only text into the nearest substantive chunk mention.
 
 7) Series restriction (CRITICAL):
 - Do NOT restrict series values via a filter on the series field.

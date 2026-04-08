@@ -4,12 +4,12 @@ from __future__ import annotations
 import copy
 import csv
 import importlib.util
-import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from opsspec.runtime.chartqa_loader import load_chartqa_case
 from opsspec.specs.base import BaseOpFields
 
 # ────────────────────────────────────────────────────────────────────────────
@@ -247,31 +247,6 @@ def compare_spec_groups(
         total_groups=len(all_group_keys),
         details=details,
     )
-
-
-def load_chartqa_case(chart_id: str) -> tuple[dict, list[dict]]:
-    """chart_id로 ChartQA 폴더에서 vega-lite spec + data rows를 로드한다.
-
-    탐색 경로:
-      - vega-lite spec: ChartQA/data/vlSpec/**/{chart_id}.json
-      - data rows:      ChartQA/data/csv/**/{chart_id}.csv
-
-    Returns:
-        (vega_lite_spec, data_rows)
-
-    Raises:
-        FileNotFoundError: 파일이 없을 때
-    """
-    root = Path(__file__).parent.parent.parent.parent  # prj-vis-exp/prj-vis-exp 루트
-    vl = list((root / "ChartQA" / "data" / "vlSpec").glob(f"**/{chart_id}.json"))
-    csv_files = list((root / "ChartQA" / "data" / "csv").glob(f"**/{chart_id}.csv"))
-    if not vl or not csv_files:
-        raise FileNotFoundError(f"ChartQA 파일 없음: chart_id={chart_id}")
-    vega_lite_spec = json.loads(vl[0].read_text(encoding="utf-8"))
-    with csv_files[0].open("r", encoding="utf-8", newline="") as f:
-        data_rows = list(csv.DictReader(f))
-    return vega_lite_spec, data_rows
-
 
 def load_test_inputs() -> list[dict[str, str]]:
     """test_inputs.csv에서 입력 데이터를 로드한다.

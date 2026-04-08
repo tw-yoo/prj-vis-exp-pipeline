@@ -59,7 +59,7 @@ Critical rules:
    - Restrict series via op_spec.group / op_spec.groupA / op_spec.groupB when needed.
    - For FilterOp, op_spec.group may be a string or list of strings. A list means OR semantics.
    - IMPORTANT: For average/count/findExtremum/sort/determineRange/retrieveValue/lagDiff/nth, group MUST be a single series value string.
-   - Never use sentence-layer tokens ("ops", "ops2", ...) as group values.
+   - Never use chunk-layer tokens ("ops", "ops2", ...) as group values.
    - Never put dimension subsets (e.g., years like ["2010","2013"]) into group.
 6) Filter MUST choose a mode:
    - For op="filter", you MUST set EITHER:
@@ -87,6 +87,7 @@ Critical rules:
    - Decide whether this step's output is scalar or row-list and ensure it is needed by later steps.
    - If a scalar is needed from prior nodes, use "ref:nX" explicitly.
    - Avoid producing disconnected or unused branches.
+   - The selected task already represents one meaningful reasoning chunk. Do NOT add compensating ops for nearby narrative-only text.
    - Keep op choices semantically aligned with intent:
      - row aggregation: sum/average/count
      - scalar arithmetic: add/scale/diff (scalar-ref mode)
@@ -99,7 +100,7 @@ Critical rules:
      Available: n2=avg_top3, n4=avg_bottom3
      Task: "scale" (double the lowest average)
      Question mentions "lowest three" → target should be "ref:n4" (avg_bottom3), not n2.
-   When the explanation sentence is ambiguous (e.g., "double the X" without naming X explicitly),
+   When the current reasoning chunk is ambiguous (e.g., "double the X" without naming X explicitly),
    derive X from the QUESTION before selecting the ref.
 
 10) COMPREHENSIVE INPUTS GATHERING - 필수 규칙 (MUST APPLY):
@@ -123,7 +124,7 @@ Critical rules:
 
    - pairDiff: Include all relevant input nodes for the pair comparison
 
-   IMPORTANT: The explanation sentence may be implicit about all needed inputs.
+   IMPORTANT: The current reasoning chunk may be implicit about all needed inputs.
    Do NOT assume that "find maximum" or "check which is greater" requires only one input.
    Derive from the QUESTION's semantic intent: if the question asks to compare
    MULTIPLE values or entities, then ALL available candidate nodes must be inputs.
@@ -150,6 +151,9 @@ $explanation
 
 Current task (fixed by pipeline):
 $current_task_json
+
+Important note:
+- current_task.sentenceIndex is a legacy field name. Treat it as the 1-based order of the current meaningful reasoning chunk.
 
 Remaining tasks S(O):
 $remaining_tasks_json

@@ -158,7 +158,7 @@ def _validate_and_parse_ops_spec_groups_impl(
 
     for group_name, raw_ops in raw_groups.items():
         if group_name == "last":
-            msg = 'group "last" is forbidden (sentence-layer groups only)'
+            msg = 'group "last" is forbidden (reasoning-chunk groups only)'
             errors.append(msg)
             if collect_issues:
                 issues.append(_issue(code="forbidden_group", message=msg, stage="group", group=group_name))

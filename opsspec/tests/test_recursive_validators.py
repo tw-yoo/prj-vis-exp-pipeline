@@ -55,6 +55,109 @@ class RecursiveValidatorsTest(unittest.TestCase):
         self.assertEqual(validated.tasks[0].taskId, "o2")
         self.assertTrue(any("ignored filter on series_field" in warning for warning in validated.warnings))
 
+    def test_inventory_allows_empty_tasks_when_warnings_explain_noop_chunks(self) -> None:
+        payload = {
+            "tasks": [],
+            "warnings": [
+                'ignored narrative-only chunk: mention="This confirms the trend."',
+                "no meaningful chunk required a new op",
+            ],
+        }
+        validated = validate_inventory(
+            payload,
+            ops_contract=self.ops_contract,
+            chart_context=self.chart_context,
+        )
+        self.assertEqual(validated.tasks, [])
+        self.assertEqual(len(validated.warnings), 2)
+
+    def test_inventory_rejects_empty_tasks_without_explanation(self) -> None:
+        payload = {"tasks": [], "warnings": []}
+        with self.assertRaisesRegex(ValueError, "must not be empty unless warnings explain"):
+            validate_inventory(
+                payload,
+                ops_contract=self.ops_contract,
+                chart_context=self.chart_context,
+            )
+
+    def test_inventory_rejects_dimension_subset_group_list_for_single_group_ops(self) -> None:
+        simple_chart_context = ChartContext(
+            fields=["year", "value"],
+            dimension_fields=["year"],
+            measure_fields=["value"],
+            primary_dimension="year",
+            primary_measure="value",
+            series_field=None,
+            categorical_values={"year": ["2010", "2013", "2017"]},
+        )
+        payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "average",
+                    "sentenceIndex": 1,
+                    "mention": "average for 2010, 2013, and 2017",
+                    "paramsHint": {"field": "@primary_measure", "group": ["2010", "2013", "2017"]},
+                }
+            ],
+            "warnings": [],
+        }
+        with self.assertRaisesRegex(ValueError, "single series value string"):
+            validate_inventory(
+                payload,
+                ops_contract=self.ops_contract,
+                chart_context=simple_chart_context,
+            )
+
+    def test_inventory_rejects_group_hint_when_series_field_is_absent(self) -> None:
+        simple_chart_context = ChartContext(
+            fields=["year", "value"],
+            dimension_fields=["year"],
+            measure_fields=["value"],
+            primary_dimension="year",
+            primary_measure="value",
+            series_field=None,
+            categorical_values={"year": ["2010", "2013", "2017"]},
+        )
+        payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "average",
+                    "sentenceIndex": 1,
+                    "mention": "average for a grouped subset",
+                    "paramsHint": {"field": "@primary_measure", "group": "2010"},
+                }
+            ],
+            "warnings": [],
+        }
+        with self.assertRaisesRegex(ValueError, "series_field is empty"):
+            validate_inventory(
+                payload,
+                ops_contract=self.ops_contract,
+                chart_context=simple_chart_context,
+            )
+
+    def test_inventory_rejects_group_hint_outside_series_domain(self) -> None:
+        payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "average",
+                    "sentenceIndex": 1,
+                    "mention": "average for Unknown",
+                    "paramsHint": {"field": "@primary_measure", "group": "Unknown"},
+                }
+            ],
+            "warnings": [],
+        }
+        with self.assertRaisesRegex(ValueError, "outside the series domain"):
+            validate_inventory(
+                payload,
+                ops_contract=self.ops_contract,
+                chart_context=self.chart_context,
+            )
+
     def test_step_compose_rejects_object_ref(self) -> None:
         payload = {
             "pickTaskId": "o1",
@@ -223,7 +326,7 @@ class RecursiveValidatorsTest(unittest.TestCase):
             mention="average for selected years",
             paramsHint={"field": "@primary_measure"},
         )
-        with self.assertRaisesRegex(ValueError, "sentence-layer tokens"):
+        with self.assertRaisesRegex(ValueError, "chunk-layer tokens"):
             validate_step_compose_output(
                 payload,
                 selected_task=selected,
@@ -249,7 +352,7 @@ class RecursiveValidatorsTest(unittest.TestCase):
             )
 
     def test_validate_operation_rejects_sentence_layer_group_token(self) -> None:
-        with self.assertRaisesRegex(ValueError, "sentence-layer tokens"):
+        with self.assertRaisesRegex(ValueError, "chunk-layer tokens"):
             validate_operation(
                 AverageOp(field="value", group="ops2"),
                 chart_context=self.chart_context,

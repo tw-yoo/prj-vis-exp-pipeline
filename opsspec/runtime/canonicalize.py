@@ -206,7 +206,7 @@ def _reassign_node_ids_and_rewrite_refs(
                 meta = {}
             meta["nodeId"] = new_id or meta.get("nodeId") or old_id
 
-            # Sentence index: derive from the sentence-layer group if missing.
+            # sentenceIndex is a legacy field name; derive chunk order from the group if missing.
             if meta.get("sentenceIndex") is None and isinstance(branch_name, str):
                 if branch_name == "ops":
                     meta["sentenceIndex"] = 1

@@ -23,14 +23,12 @@ from models import (
     GenerateAnswerRequest,
     GenerateAnswerResponse,
     GenerateGrammarRequest,
-    GenerateLambdaRequest,
-    GenerateLambdaResponse,
+    GenerateGrammarRequestBodyRequest,
     RunModuleTraceRequest,
     RunModuleTraceResponse,
     RunPythonPlanRequest,
     RunPythonPlanResponse,
 )
-from nlp_engine import NLPEngine
 from draw_plan import build_draw_ops_spec, export_draw_plan_to_public, validate_draw_groups_payload
 from opsspec.runtime.scheduler import schedule_ops_spec
 from opsspec.runtime.execution_plan import build_sentence_execution_plan
@@ -61,6 +59,7 @@ from opsspec.runtime.python_scenario_loader import PythonScenarioLoadError, load
 from opsspec.runtime.ui_schema import build_op_registry_ui_schema
 from opsspec.runtime.context_builder import build_chart_context
 from opsspec.runtime.canonicalize import canonicalize_ops_spec_groups
+from opsspec.runtime.chartqa_loader import load_chartqa_case
 from opsspec.runtime.vegalite_to_d3 import convert_vegalite_to_d3
 from opsspec.validation.endpoint_validators import validate_and_parse_ops_spec_groups, validate_refs_against_node_ids
 from opsspec.core.utils import prune_nulls
@@ -172,24 +171,15 @@ async def lifespan(app: FastAPI):
     ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
     ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
     ollama_api_key = os.getenv("OLLAMA_API_KEY", "ollama")
-    use_gpu = os.getenv("STANZA_USE_GPU", "false").lower() == "true"
     trace_log_path = os.getenv("TRACE_LOG_PATH", "logs/pipeline_trace.log")
 
     configure_trace_logger(trace_log_path)
     trace_logger.info(
-        "startup config | model=%s base_url=%s use_gpu=%s",
+        "startup config | model=%s base_url=%s",
         ollama_model,
         ollama_base_url,
-        use_gpu,
     )
 
-    engine = NLPEngine(
-        language="en",
-        use_gpu=use_gpu,
-        ollama_model=ollama_model,
-        ollama_base_url=ollama_base_url,
-        ollama_api_key=ollama_api_key,
-    )
     grammar_pipeline = OpsSpecPipeline(
         ollama_model=ollama_model,
         ollama_base_url=ollama_base_url,
@@ -204,14 +194,12 @@ async def lifespan(app: FastAPI):
     )
 
     try:
-        engine.load()
         grammar_pipeline.load()
         answer_pipeline.load()
     except Exception:
         logger.exception("Failed to initialize NLP models during startup.")
         raise
 
-    app.state.nlp_engine = engine
     app.state.grammar_pipeline = grammar_pipeline
     app.state.answer_pipeline = answer_pipeline
     yield
@@ -248,6 +236,45 @@ async def health_check():
 async def op_registry():
     # UI-facing schema for specTest: op-specific parameter contract + ref rules.
     return prune_nulls(build_op_registry_ui_schema())
+
+
+@app.post("/generate_grammar_request_body", response_model=GenerateGrammarRequest)
+async def generate_grammar_request_body(request: GenerateGrammarRequestBodyRequest):
+    request_id = uuid.uuid4().hex[:12]
+    q_preview = " ".join(request.question.split())[:120]
+    logger.info(
+        '[/generate_grammar_request_body] request received | request_id=%s chart_id=%s question="%s"',
+        request_id,
+        request.chart_id,
+        q_preview,
+    )
+
+    try:
+        vega_lite_spec, data_rows = load_chartqa_case(request.chart_id)
+    except FileNotFoundError as exc:
+        logger.error(
+            "[/generate_grammar_request_body] ChartQA file not found | request_id=%s chart_id=%s error=%s",
+            request_id,
+            request.chart_id,
+            exc,
+        )
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        logger.error(
+            "[/generate_grammar_request_body] invalid ChartQA lookup | request_id=%s chart_id=%s error=%s",
+            request_id,
+            request.chart_id,
+            exc,
+        )
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return GenerateGrammarRequest(
+        question=request.question,
+        explanation=request.explanation,
+        vega_lite_spec=vega_lite_spec,
+        data_rows=data_rows,
+        debug=bool(request.debug),
+    )
 
 
 @app.post("/canonicalize_opsspec", response_model=CanonicalizeOpsSpecResponse)
@@ -336,93 +363,6 @@ async def canonicalize_opsspec(request: CanonicalizeOpsSpecRequest):
                 report_path,
             )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/generate_lambda", response_model=GenerateLambdaResponse)
-async def generate_lambda(request: GenerateLambdaRequest):
-    engine: NLPEngine = getattr(app.state, "nlp_engine", None)
-    if engine is None:
-        raise HTTPException(status_code=500, detail="NLP engine is not initialized.")
-
-    request_id = uuid.uuid4().hex[:12]
-    text_preview = " ".join(request.text.split())[:120]
-    started_at = time.perf_counter()
-    logger.info('[/generate_lambda] request received | request_id=%s text="%s"', request_id, text_preview)
-    trace_logger.info(
-        "[request:%s] endpoint_in | text=%s chart_fields=%d dimension_fields=%d measure_fields=%d",
-        request_id,
-        request.text,
-        len(request.chart_context.fields),
-        len(request.chart_context.dimension_fields),
-        len(request.chart_context.measure_fields),
-    )
-
-    try:
-        result = engine.generate_lambda(
-            text=request.text,
-            chart_context=request.chart_context.model_dump(),
-            request_id=request_id,
-        )
-        elapsed_ms = (time.perf_counter() - started_at) * 1000
-        logger.info(
-            "[/generate_lambda] request completed | request_id=%s lambda_steps=%d ops_groups=%d warnings=%d elapsed_ms=%.1f",
-            request_id,
-            len(result.get("lambda_expression", [])),
-            len(result.get("ops_spec", {})),
-            len(result.get("warnings", [])),
-            elapsed_ms,
-        )
-        trace_logger.info("[request:%s] endpoint_out | elapsed_ms=%.1f", request_id, elapsed_ms)
-        return GenerateLambdaResponse(**result)
-    except RuntimeError as exc:
-        elapsed_ms = (time.perf_counter() - started_at) * 1000
-        logger.error(
-            "[/generate_lambda] runtime error | request_id=%s elapsed_ms=%.1f error=%s",
-            request_id,
-            elapsed_ms,
-            exc,
-        )
-        report_path = _write_error_report(
-            endpoint="/generate_lambda",
-            request_id=request_id,
-            elapsed_ms=elapsed_ms,
-            error=exc,
-            request_summary={
-                "text_preview": text_preview,
-                "chart_fields_count": len(request.chart_context.fields),
-                "dimension_fields_count": len(request.chart_context.dimension_fields),
-                "measure_fields_count": len(request.chart_context.measure_fields),
-            },
-        )
-        if report_path is not None:
-            logger.error("[/generate_lambda] error report saved | request_id=%s path=%s", request_id, report_path)
-        trace_logger.error("[request:%s] runtime_error | elapsed_ms=%.1f error=%s", request_id, elapsed_ms, exc)
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except Exception as exc:
-        elapsed_ms = (time.perf_counter() - started_at) * 1000
-        logger.error(
-            "[/generate_lambda] unhandled error | request_id=%s elapsed_ms=%.1f error=%s",
-            request_id,
-            elapsed_ms,
-            exc,
-        )
-        report_path = _write_error_report(
-            endpoint="/generate_lambda",
-            request_id=request_id,
-            elapsed_ms=elapsed_ms,
-            error=exc,
-            request_summary={
-                "text_preview": text_preview,
-                "chart_fields_count": len(request.chart_context.fields),
-                "dimension_fields_count": len(request.chart_context.dimension_fields),
-                "measure_fields_count": len(request.chart_context.measure_fields),
-            },
-        )
-        if report_path is not None:
-            logger.error("[/generate_lambda] error report saved | request_id=%s path=%s", request_id, report_path)
-        trace_logger.error("[request:%s] unhandled_error | elapsed_ms=%.1f error=%s", request_id, elapsed_ms, exc)
-        logger.exception("Failed to generate lambda expression.")
-        raise HTTPException(status_code=500, detail=f"Failed to parse text: {exc}") from exc
 
 
 @app.post("/generate_grammar")

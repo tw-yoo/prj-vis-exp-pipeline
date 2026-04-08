@@ -17,7 +17,8 @@ class OpTask(BaseModel):
 
     - taskId is stable within a single request (o1, o2, ...)
     - op is one of op_registry.allowed_ops (validated later)
-    - sentenceIndex ties the task to a sentence-layer group ("ops", "ops2", ...)
+    - sentenceIndex is a legacy field name; it stores reasoning-chunk order
+      and maps to chunk-layer groups ("ops", "ops2", ...)
     - paramsHint is a *flat* hint dict (no nested objects) to keep prompting stable
     """
 

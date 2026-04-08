@@ -271,7 +271,7 @@ def build_ops_contract_for_prompt() -> Dict[str, object]:
         "meta_rules": {
             "nodeId": "required per op",
             "inputs": "dependency edge nodeIds",
-            "sentenceIndex": "required (must match sentence-layer group)",
+            "sentenceIndex": "required legacy field (must match reasoning-chunk group)",
             "view": "optional rendering hints only",
         },
     }

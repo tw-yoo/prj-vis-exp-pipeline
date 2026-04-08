@@ -135,25 +135,6 @@ class DrawGroupFilterSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class DrawSplitPanelSelector(BaseModel):
-    include: List[PrimitiveValue] | None = None
-    exclude: List[PrimitiveValue] | None = None
-    all: bool | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class DrawSplitSpec(BaseModel):
-    mode: Literal["domain", "selector"] | None = None
-    by: Literal["x"] | None = None
-    groups: Dict[str, List[PrimitiveValue]] = Field(default_factory=dict)
-    selectors: Dict[str, DrawSplitPanelSelector] | None = None
-    restTo: str | None = None
-    orientation: Literal["vertical", "horizontal"] | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class DrawBandSpec(BaseModel):
     axis: Literal["x", "y"]
     range: List[PrimitiveValue] = Field(min_length=2, max_length=2)
@@ -184,15 +165,6 @@ class DrawScalarPanelDelta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class DrawScalarPanelPosition(BaseModel):
-    x: float
-    y: float
-    width: float
-    height: float
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class DrawScalarPanelStyle(BaseModel):
     leftFill: str | None = None
     rightFill: str | None = None
@@ -212,7 +184,6 @@ class DrawScalarPanelSpec(BaseModel):
     left: DrawScalarPanelValue
     right: DrawScalarPanelValue
     delta: DrawScalarPanelDelta | None = None
-    position: DrawScalarPanelPosition | None = None
     style: DrawScalarPanelStyle | None = None
 
     model_config = ConfigDict(extra="forbid")
@@ -229,15 +200,6 @@ class DrawOpBase(BaseModel):
 
 class DrawClearOp(DrawOpBase):
     action: Literal["clear"] = "clear"
-
-
-class DrawSplitOp(DrawOpBase):
-    action: Literal["split"] = "split"
-    split: DrawSplitSpec
-
-
-class DrawUnsplitOp(DrawOpBase):
-    action: Literal["unsplit"] = "unsplit"
 
 
 class DrawHighlightOp(DrawOpBase):
@@ -310,8 +272,6 @@ class DrawScalarPanelOp(DrawOpBase):
 DrawOperation: TypeAlias = Annotated[
     Union[
         DrawClearOp,
-        DrawSplitOp,
-        DrawUnsplitOp,
         DrawHighlightOp,
         DrawLineOp,
         DrawTextOp,

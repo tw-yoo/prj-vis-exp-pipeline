@@ -54,11 +54,13 @@
    - 를 구성해서 LLM grounding의 안정성을 높입니다.
 
 2. **Recursive Grammar 파이프라인 실행**
-   - Module A: Inventory — explanation에서 S(O)=연산 태스크 집합을 생성(LLM + strict retry)
-   - Module B: Step-Compose — 남은 태스크 중 “다음 1개 노드(op_spec + inputs)”를 제안(LLM + strict retry)
-   - 이후는 결정론적으로:
-     - grounding(token/value normalize) → 계약/의미 검증 → 실행 → artifact summary 갱신
-   - S(O)가 빌 때까지 반복합니다.
+   - **Module A: Inventory (1회 호출)**
+     - explanation에서 연산 태스크 집합 S(O) 생성 (LLM + strict retry)
+   - **Module B: Step-Compose (반복 루프)**
+     - S(O)가 빌 때까지 다음을 반복:
+       1) 남은 태스크 중 “다음 1개 노드(op_spec + inputs)”를 제안 (LLM + strict retry)
+       2) grounding(token/value normalize) → 계약/의미 검증 → 실행 → artifact summary 갱신
+       3) 실행된 task를 S(O)에서 제거
 
 3. **엄격 검증 + 재시도(strict retry)**
    - LLM이 잘못된 JSON/스키마/계약을 출력하면 validation feedback을 넣어 재시도합니다.
@@ -119,10 +121,11 @@ Endpoint 구현:
 - 스키마: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/core/recursive_models.py`
 - 검증: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/validation/recursive_validators.py` (`validate_inventory`)
 
-### 4.2 Step-Compose (LLM)
+### 4.2 Step-Compose (LLM, 반복 호출)
 - 모듈: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/modules/module_step_compose.py`
 - 프롬프트: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/prompts/opsspec_step_compose.md`
 - 검증: `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/validation/recursive_validators.py` (`validate_step_compose_output`)
+- **특징**: 각 step마다 LLM 호출 → grounding/validate/execute (deterministic) → remaining tasks에서 제거 → 반복
 
 ### 4.3 Grounding / Validation / Execution (deterministic)
 - Grounding(token/value normalize):

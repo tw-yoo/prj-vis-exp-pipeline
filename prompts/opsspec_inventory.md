@@ -33,32 +33,43 @@ Output schema:
     "taskId": "o1|o2|o3|... (MUST be unique, MUST match o<digits>)",
     "op": "string (MUST be in allowed_ops)",
     "sentenceIndex": 1,
-    "mention": "short quote/summary of the part of explanation that mentions this operation",
+    "mention": "short quote/summary of the meaningful chunk that mentions this operation",
     "paramsHint": { "paramName": "scalar|list-of-scalars" }
   }],
   "warnings": ["string"]
 }
 
 Rules:
+- First segment the explanation into meaningful reasoning chunks.
+  - A chunk may be shorter than a sentence, equal to a sentence, or span multiple sentences.
+  - Segment by coherent visual/computational intent, not grammar alone.
+  - sentenceIndex is a legacy field name; use it to encode chunk order.
+- Chunking policy:
+  - One sentence may split into multiple chunks if it contains multiple distinct visual/computational acts.
+  - Multiple adjacent sentences may merge into one chunk if together they express one coherent act.
+  - Rhetorical bridge, restatement, transition, confirmation, or interpretation-only text should not become standalone tasks.
+  - Absorb such non-substantive text into the nearest substantive chunk mention.
+- No-op chunk rule:
+  - If a chunk does not require a new operation, produce no task for that chunk.
+  - Do NOT invent an operation merely to preserve chunk count.
 - Only extract operations that are explicitly mentioned in the explanation.
   - Do NOT invent extra steps just because an op exists in allowed_ops.
   - Do NOT add operations that are logically implied but not stated —
     Step-Compose handles intermediate steps at compose-time.
-  - "clearly implied" means: the sentence directly describes the action or result for this op.
+  - "clearly implied" means: the current chunk directly describes the action or result for this op.
     It does NOT mean: "this op will eventually be needed to reach the final answer."
-- CRITICAL: Do NOT anticipate future operations based on semantic inference across sentences.
-  - When the explanation has multiple sentences, each sentence MUST be treated independently.
-  - Do NOT add a task to sentence N just because it logically prepares for an operation in sentence N+1.
+- CRITICAL: Do NOT anticipate future operations based on semantic inference across chunks.
+  - Do NOT add a task to chunk N just because it logically prepares for an operation in chunk N+1.
   - Example (WRONG):
-    Sentence 1: "retrieve value of 2016 and 2017"
+    Chunk 1: "retrieve value of 2016 and 2017"
     → LLM infers: "these two values will be diffed later, so I should add a diff task here"
     → Output: [retrieveValue(2016), retrieveValue(2017), diff(...)] ✗
   - Example (RIGHT):
-    Sentence 1: "retrieve value of 2016 and 2017" (only retrieve is mentioned)
+    Chunk 1: "retrieve value of 2016 and 2017" (only retrieve is mentioned)
     → Output: [retrieveValue(2016), retrieveValue(2017)] (no diff)
-    Sentence 3: "get the difference of the retrieved values"
+    Chunk 3: "get the difference of the retrieved values"
     → Output: [diff(...)] (diff goes here, where it is explicitly mentioned)
-  - Rationale: Step-Compose will compose operations across sentence boundaries. Inventory must not pre-compose.
+  - Rationale: Step-Compose will compose operations across chunk boundaries. Inventory must not pre-compose.
 - First infer the intended final result artifact from the explanation/question:
   - scalar (single number), boolean, single target(row 1), list/table(rows 2+), or set-like list.
   - Inventory must be consistent with ONE primary final artifact type.
@@ -87,20 +98,29 @@ Rules:
 - Build tasks as a minimal executable plan:
   - include prerequisite steps (filter/aggregate/compare) needed to derive the final intended artifact.
   - avoid redundant branches that do not contribute to the final artifact.
-- sentenceIndex MUST be the 1-based index of the sentence that explicitly names or describes this task's action.
-  - Assign a task to the sentence whose verb/action directly corresponds to this op
+- sentenceIndex MUST be the 1-based order of the meaningful chunk that explicitly names or describes this task's action.
+  - Assign a task to the chunk whose verb/action directly corresponds to this op
     (e.g., "retrieve" → retrieveValue, "difference" → diff, "filter" → filter).
-  - Do NOT assign a task to a sentence just because it provides input data for the task.
-  - The fact that sentence 1 produces values that a later op will consume
+  - Do NOT assign a task to a chunk just because it provides input data for the task.
+  - The fact that chunk 1 produces values that a later op will consume
     does NOT mean that later op belongs in sentenceIndex=1.
-    If an op is only mentioned in sentence 3, it gets sentenceIndex=3.
+    If an op is only mentioned in chunk 3, it gets sentenceIndex=3.
+- mention should quote or briefly summarize the full meaningful chunk, not just one sentence fragment.
 - paramsHint must be FLAT (no nested objects). Keep it minimal.
 - Role tokens allowed in paramsHint values:
   - "@primary_dimension", "@primary_measure", "@series_field"
 - Series restriction:
   - Never represent series selection as a filter on the series field.
-  - Use paramsHint.group="<series value>" or paramsHint.group=["A","B"] instead.
-  - When paramsHint.group is a list for FilterOp, it means OR semantics across listed series values.
+  - paramsHint.group is ONLY for series restriction on substantive ops.
+  - Use paramsHint.group="<series value>" on single-group ops such as average/count/findExtremum/sort/determineRange/retrieveValue/lagDiff/nth.
+  - Use paramsHint.group=["A","B"] only for FilterOp series restriction; a list means OR semantics across listed series values.
+  - Never use paramsHint.group to encode primary-dimension subsets such as years/categories/labels.
+  - If the explanation names a subset of primary-dimension values, emit a filter task with include/exclude/between instead.
+- Subset-based aggregate pattern:
+  - When an aggregate/ranking op applies to a subset of primary-dimension values, inventory must emit:
+    1. a subset-selection task (typically filter on @primary_dimension or another categorical field)
+    2. a substantive op that consumes that subset later (average/count/findExtremum/sort/determineRange/etc.)
+  - Do NOT encode the subset directly inside paramsHint.group for those ops.
 - Filter task must choose a mode:
   - If you output a task with op="filter", paramsHint MUST include EITHER:
     - membership mode: include and/or exclude
@@ -125,34 +145,25 @@ Rules:
     explanation: "find the top 2 years by production"
     → filter(field="Year", include=["2018", "2019"])  ← resolved from rows_preview
     NOT: sort(desc) + nth(1,2)
-- LAST SENTENCE RULE: The tasks in the LAST sentence of the explanation must collectively
-  produce the final answer to the QUESTION.
-  1. Re-read the QUESTION to understand the complete structure of the final answer.
-  2. If the question asks to compare two derived values (e.g., "how big was X compared to Y?"),
-     generate ALL ops needed: compute X, compute Y, then compare/diff X and Y.
-  3. If the explanation uses vague or singular language in the last sentence
-     (e.g., "get the difference", "compare the values"), expand it to the full set of
-     ops implied by the question — do not stop at one op if the question requires more.
-  - Example (WRONG):
-    question: "how big was change A compared to change B?"
-    last sentence: "get the difference of the retrieved values"
-    → Only 1 diff task  ← WRONG: doesn't fully answer the comparison
-  - Example (RIGHT):
-    question: "how big was change A compared to change B?"
-    last sentence: "get the difference of the retrieved values"
-    → 3 diff tasks: diff(A_start, A_end), diff(B_start, B_end), diff(diff_A, diff_B)
-    ← RIGHT: fully computes both changes and their comparison
+  Example:
+    explanation: "compute the average for 2010, 2013, and 2017"
+    → filter(field="@primary_dimension", include=["2010", "2013", "2017"])
+    → average(field="@primary_measure")
+    NOT: average(field="@primary_measure", group=["2010", "2013", "2017"])
+- CHUNK-LEVEL COMPLETENESS:
+  The final substantive chunk(s) should collectively support the final answer to the QUESTION.
+  Read the QUESTION to understand the answer structure, but do not invent tasks for chunks that do not explicitly introduce an operation.
 
-- MULTI-OP GENERATION PER SENTENCE:
-  A single explanation sentence may require MULTIPLE ops to be extracted.
+- MULTI-OP GENERATION PER CHUNK:
+  A single meaningful chunk may require MULTIPLE ops to be extracted.
   - Example:
     explanation: "Filter for the revenue of Thailand and the Philippines"
     question: "in which years did Thailand's revenue exceed Philippines?"
-    → This sentence requires TWO ops:
+    → This chunk requires TWO ops:
       1) filter(field="Country", include=["Thailand", "Philippines"])  ← the explicit "filter"
       2) pairDiff(...) ← implicit "compare" to prepare for later question answering
       So taskIds: o1 (filter), o2 (pairDiff) with sentenceIndex=1 for both.
-    → Do NOT create filter-only (no pairDiff) just because the sentence only mentions "filter".
+    → Do NOT create filter-only (no pairDiff) just because the chunk only mentions "filter".
     → The question context ("Thailand exceeded Philippines") reveals that pairDiff is needed.
 
 - PAIRDIFF GROUPORDER SEMANTICS:
@@ -175,9 +186,6 @@ $question
 
 Explanation:
 $explanation
-
-Explanation sentences (deterministic split; 1-based indices):
-$explanation_sentences_json
 
 Chart context:
 $chart_context_json

@@ -91,7 +91,7 @@ class OpsSpecExecutor:
             self._store_runtime(op, result)
             results_by_group.setdefault(group_name, []).extend([replace(item) for item in result])
 
-        # Stable output ordering by sentence-layer group name.
+        # Stable output ordering by reasoning-chunk group name.
         ordered_out: Dict[str, List[DatumValue]] = {}
         for name in self._ordered_group_names(results_by_group):
             ordered_out[name] = results_by_group.get(name, [])

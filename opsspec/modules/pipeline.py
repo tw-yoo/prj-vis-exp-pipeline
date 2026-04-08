@@ -421,7 +421,7 @@ def _build_retry_feedback(attempt: int, max_retries: int, error: Exception) -> L
 
     if ".group" in err_lower or "group must be" in err_lower:
         lines.append(
-            "[Type: Group Rule] group must be a single series value string (not year list or sentence-layer token)."
+            "[Type: Group Rule] group must be a single series value string (not year list or chunk-layer token)."
         )
         lines.append(
             "[Hint] For year subsets, use filter(include=[...]) first, then compute average/count/findExtremum using inputs=[<filter_node>]."
@@ -466,7 +466,7 @@ class OpsSpecPipeline:
 
     - Inventory: explanation -> S(O)
     - Recursive loop: step-compose -> deterministic grounding/validation -> execute -> update artifacts
-    - Output: OpsSpec group map (sentence-layer groups) with meta.nodeId/meta.inputs edges
+    - Output: OpsSpec group map (reasoning-chunk groups) with meta.nodeId/meta.inputs edges
     """
 
     def __init__(

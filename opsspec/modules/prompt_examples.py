@@ -330,9 +330,10 @@ def _pick_examples(
     return selected
 
 
-def _sentence_text(explanation: str, sentence_index: int) -> str:
+def _chunk_text(explanation: str, sentence_index: int) -> str:
     text = str(explanation or "").strip()
-    # numbered sentence style in dataset: "1. ...\n2. ..."
+    # The stored example corpus is sentence-oriented; reuse it as a rough proxy
+    # for the legacy sentenceIndex field, which now represents chunk order.
     lines = [x.strip() for x in re.split(r"\n+", text) if x.strip()]
     if 1 <= sentence_index <= len(lines):
         return lines[sentence_index - 1]
@@ -345,7 +346,7 @@ def _format_inventory_example_output(spec: Dict[str, List[OperationSpec]], expla
     for idx, node in enumerate(nodes, start=1):
         meta = node.get("meta") or {}
         sentence_index = meta.get("sentenceIndex")
-        mention = _sentence_text(explanation, sentence_index if isinstance(sentence_index, int) else 1)
+        mention = _chunk_text(explanation, sentence_index if isinstance(sentence_index, int) else 1)
         params_hint: Dict[str, Any] = {}
         for key, value in node.items():
             if key in {"op", "id", "meta", "chartId", "_group"} or value is None:
@@ -413,6 +414,121 @@ def build_inventory_few_shot_examples(
     max_examples: int = 4,
     max_chars: int = 7000,
 ) -> FewShotBundle:
+    canonical_chunk_examples = [
+        "[Inventory Canonical Pattern | merge_adjacent_sentences_into_one_chunk]",
+        "Rule: Multiple adjacent sentences may map to one meaningful chunk when they describe one coherent visual/computational act.",
+        "ExampleExplanation: \"Find the average revenue for Broadcasting. Use that same average as the benchmark for the comparison.\"",
+        "ExpectedOutputJSON:",
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "taskId": "o1",
+                        "op": "average",
+                        "sentenceIndex": 1,
+                        "mention": "Find the average revenue for Broadcasting. Use that same average as the benchmark for the comparison.",
+                        "paramsHint": {"field": "@primary_measure", "group": "Broadcasting"},
+                    }
+                ],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "",
+        "[Inventory Canonical Pattern | dimension_subset_then_aggregate]",
+        "Rule: If a chunk asks for an aggregate over a subset of primary-dimension values, emit a filter task for the subset and a separate aggregate task.",
+        "Rule: paramsHint.group is reserved for series restriction, not for year/category/label subsets.",
+        "ExampleExplanation: \"Compute the average for 2010, 2013, and 2017.\"",
+        "ExpectedOutputJSON:",
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "taskId": "o1",
+                        "op": "filter",
+                        "sentenceIndex": 1,
+                        "mention": "Compute the average for 2010, 2013, and 2017.",
+                        "paramsHint": {"field": "@primary_dimension", "include": ["2010", "2013", "2017"]},
+                    },
+                    {
+                        "taskId": "o2",
+                        "op": "average",
+                        "sentenceIndex": 1,
+                        "mention": "Compute the average for 2010, 2013, and 2017.",
+                        "paramsHint": {"field": "@primary_measure"},
+                    },
+                ],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "",
+        "[Inventory Canonical Pattern | split_one_sentence_into_multiple_chunks]",
+        "Rule: One sentence may split into multiple chunks when it contains multiple distinct acts.",
+        "ExampleExplanation: \"Filter to 2016, then compute the average, then compare the result with 2017.\"",
+        "ExpectedOutputJSON:",
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "taskId": "o1",
+                        "op": "filter",
+                        "sentenceIndex": 1,
+                        "mention": "Filter to 2016",
+                        "paramsHint": {"field": "@primary_dimension", "include": ["2016"]},
+                    },
+                    {
+                        "taskId": "o2",
+                        "op": "average",
+                        "sentenceIndex": 2,
+                        "mention": "compute the average",
+                        "paramsHint": {"field": "@primary_measure"},
+                    },
+                    {
+                        "taskId": "o3",
+                        "op": "compare",
+                        "sentenceIndex": 3,
+                        "mention": "compare the result with 2017",
+                        "paramsHint": {"which": "max"},
+                    },
+                ],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "",
+        "[Inventory Canonical Pattern | absorb_noop_text_into_neighbor_chunk]",
+        "Rule: Narrative-only text should not become a standalone task. Absorb it into the nearest substantive chunk mention.",
+        "ExampleExplanation: \"Compute the average revenue for Commercial. This confirms the overall trend. Compare it against Broadcasting.\"",
+        "ExpectedOutputJSON:",
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "taskId": "o1",
+                        "op": "average",
+                        "sentenceIndex": 1,
+                        "mention": "Compute the average revenue for Commercial. This confirms the overall trend.",
+                        "paramsHint": {"field": "@primary_measure", "group": "Commercial"},
+                    },
+                    {
+                        "taskId": "o2",
+                        "op": "compare",
+                        "sentenceIndex": 2,
+                        "mention": "Compare it against Broadcasting.",
+                        "paramsHint": {"which": "max"},
+                    },
+                ],
+                "warnings": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "",
+    ]
     selected = _pick_examples(
         question=question,
         explanation=explanation,
@@ -420,9 +536,9 @@ def build_inventory_few_shot_examples(
         max_examples=max_examples,
     )
     if not selected:
-        return FewShotBundle(text="(no few-shot examples available)", ids=[])
+        return FewShotBundle(text="\n".join(canonical_chunk_examples).strip(), ids=[])
 
-    lines: List[str] = []
+    lines: List[str] = list(canonical_chunk_examples)
     used_ids: List[str] = []
     for idx, ex in enumerate(selected, start=1):
         block = [
