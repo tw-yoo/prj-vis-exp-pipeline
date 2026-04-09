@@ -374,150 +374,136 @@ spec_0o12tngadmjjux2n = {
             operator="<"
         ),
         FilterOp(
-            id="n17",
-            meta=OpsMeta(nodeId="n17", inputs=[], sentenceIndex=2),
+            id="n18",
+            meta=OpsMeta(nodeId="n18", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2007"]
         ),
         CompareBoolOp(
-            id="n18",
-            meta=OpsMeta(nodeId="n18", inputs=["n1", "n17"], sentenceIndex=2),
+            id="n19",
+            meta=OpsMeta(nodeId="n19", inputs=["n1", "n18"], sentenceIndex=2),
             field="Production in million units",
             targetA="ref:n1",
-            targetB="ref:n17",
+            targetB="ref:n18",
             operator="<"
         ),
         FilterOp(
-            id="n19",
-            meta=OpsMeta(nodeId="n19", inputs=[], sentenceIndex=2),
+            id="n20",
+            meta=OpsMeta(nodeId="n20", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2008"]
         ),
         CompareBoolOp(
-            id="n20",
-            meta=OpsMeta(nodeId="n20", inputs=["n1", "n19"], sentenceIndex=2),
-            field="Production in million units",
-            targetA="ref:n1",
-            targetB="ref:n19",
-            operator="<"
-        ),
-        FilterOp(
-            id="n19",
-            meta=OpsMeta(nodeId="n19", inputs=[], sentenceIndex=2),
-            field="Year",
-            include=["2008"]
-        ),
-        CompareBoolOp(
-            id="n20",
-            meta=OpsMeta(nodeId="n20", inputs=["n1", "n19"], sentenceIndex=2),
-            field="Production in million units",
-            targetA="ref:n1",
-            targetB="ref:n19",
-            operator="<"
-        ),
-        FilterOp(
             id="n21",
-            meta=OpsMeta(nodeId="n21", inputs=[], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n21", inputs=["n1", "n20"], sentenceIndex=2),
+            field="Production in million units",
+            targetA="ref:n1",
+            targetB="ref:n20",
+            operator="<"
+        ),
+        FilterOp(
+            id="n22",
+            meta=OpsMeta(nodeId="n22", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2008"]
         ),
         CompareBoolOp(
-            id="n22",
-            meta=OpsMeta(nodeId="n22", inputs=["n1", "n21"], sentenceIndex=2),
+            id="n23",
+            meta=OpsMeta(nodeId="n23", inputs=["n1", "n22"], sentenceIndex=2),
+            field="Production in million units",
+            targetA="ref:n1",
+            targetB="ref:n22",
+            operator="<"
+        ),
+        FilterOp(
+            id="n24",
+            meta=OpsMeta(nodeId="n24", inputs=[], sentenceIndex=2),
+            field="Year",
+            include=["2008"]
+        ),
+        CompareBoolOp(
+            id="n25",
+            meta=OpsMeta(nodeId="n25", inputs=["n1", "n24"], sentenceIndex=2),
             field="Production in million units",
             targetA="ref:n1",
             targetB="ref:n21",
             operator="<"
         ),
         FilterOp(
-            id="n23",
-            meta=OpsMeta(nodeId="n23", inputs=[], sentenceIndex=2),
+            id="n26",
+            meta=OpsMeta(nodeId="n26", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2009"]
         ),
         CompareBoolOp(
-            id="n24",
-            meta=OpsMeta(nodeId="n24", inputs=["n1", "n23"], sentenceIndex=2),
+            id="n27",
+            meta=OpsMeta(nodeId="n27", inputs=["n1", "n26"], sentenceIndex=2),
             field="Production in million units",
             targetA="ref:n1",
             targetB="ref:n23",
             operator="<"
         ),
         FilterOp(
-            id="n25",
-            meta=OpsMeta(nodeId="n25", inputs=[], sentenceIndex=2),
+            id="n28",
+            meta=OpsMeta(nodeId="n28", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2010"]
         ),
         CompareBoolOp(
-            id="n26",
-            meta=OpsMeta(nodeId="n26", inputs=["n1", "n25"], sentenceIndex=2),
+            id="n29",
+            meta=OpsMeta(nodeId="n29", inputs=["n1", "n28"], sentenceIndex=2),
             field="Production in million units",
             targetA="ref:n1",
-            targetB="ref:n25",
+            targetB="ref:n28",
             operator="<"
         ),
         FilterOp(
-            id="n27",
-            meta=OpsMeta(nodeId="n27", inputs=[], sentenceIndex=2),
+            id="n30",
+            meta=OpsMeta(nodeId="n30", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2011"]
         ),
         CompareBoolOp(
-            id="n28",
-            meta=OpsMeta(nodeId="n28", inputs=["n1", "n27"], sentenceIndex=2),
-            field="Production in million units",
-            targetA="ref:n1",
-            targetB="ref:n27",
-            operator="<"
-        ),
-        FilterOp(
-            id="n29",
-            meta=OpsMeta(nodeId="n29", inputs=[], sentenceIndex=2),
-            field="Year",
-            include=["2012"]
-        ),
-        CompareBoolOp(
-            id="n30",
-            meta=OpsMeta(nodeId="n30", inputs=["n1", "n30"], sentenceIndex=2),
+            id="n31",
+            meta=OpsMeta(nodeId="n31", inputs=["n1", "n30"], sentenceIndex=2),
             field="Production in million units",
             targetA="ref:n1",
             targetB="ref:n30",
             operator="<"
         ),
         FilterOp(
-            id="n31",
-            meta=OpsMeta(nodeId="n31", inputs=[], sentenceIndex=2),
+            id="n32",
+            meta=OpsMeta(nodeId="n32", inputs=[], sentenceIndex=2),
             field="Year",
             include=["2012"]
         ),
         CompareBoolOp(
-            id="n32",
-            meta=OpsMeta(nodeId="n32", inputs=["n1", "n31"], sentenceIndex=2),
-            field="Production in million units",
-            targetA="ref:n1",
-            targetB="ref:n31",
-            operator="<"
-        ),
-        FilterOp(
             id="n33",
-            meta=OpsMeta(nodeId="n33", inputs=[], sentenceIndex=2),
-            field="Year",
-            include=["2013"]
-        ),
-        CompareBoolOp(
-            id="n34",
-            meta=OpsMeta(nodeId="n34", inputs=["n1", "n33"], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n33", inputs=["n1", "n33"], sentenceIndex=2),
             field="Production in million units",
             targetA="ref:n1",
             targetB="ref:n33",
             operator="<"
         ),
         FilterOp(
+            id="n34",
+            meta=OpsMeta(nodeId="n34", inputs=[], sentenceIndex=2),
+            field="Year",
+            include=["2012"]
+        ),
+        CompareBoolOp(
+            id="n35",
+            meta=OpsMeta(nodeId="n35", inputs=["n1", "n34"], sentenceIndex=2),
+            field="Production in million units",
+            targetA="ref:n1",
+            targetB="ref:n34",
+            operator="<"
+        ),
+        FilterOp(
             id="n35",
             meta=OpsMeta(nodeId="n35", inputs=[], sentenceIndex=2),
             field="Year",
-            include=["2014"]
+            include=["2013"]
         ),
         CompareBoolOp(
             id="n36",
@@ -526,18 +512,32 @@ spec_0o12tngadmjjux2n = {
             targetA="ref:n1",
             targetB="ref:n35",
             operator="<"
+        ),
+        FilterOp(
+            id="n37",
+            meta=OpsMeta(nodeId="n37", inputs=[], sentenceIndex=2),
+            field="Year",
+            include=["2014"]
+        ),
+        CompareBoolOp(
+            id="n38",
+            meta=OpsMeta(nodeId="n38", inputs=["n1", "n37"], sentenceIndex=2),
+            field="Production in million units",
+            targetA="ref:n1",
+            targetB="ref:n37",
+            operator="<"
         )
     ],
     "ops3":[
         FilterOp(
-            id="n37",
-            meta=OpsMeta(nodeId="n37", inputs=[], sentenceIndex=3),
+            id="n38",
+            meta=OpsMeta(nodeId="n38", inputs=[], sentenceIndex=3),
             field="Year",
             include=["2004", "2006", "2007", "2010", "2011", "2002", "2003"]
         ),
         CountOp(
-            id="n38",
-            meta=OpsMeta(nodeId="n38", inputs=["n37"], sentenceIndex=3)
+            id="n39",
+            meta=OpsMeta(nodeId="n39", inputs=["n38"], sentenceIndex=3)
         )
     ]
 }
@@ -685,7 +685,7 @@ spec_2ebtadc07b7bo277 = {
     "ops3":[
         RetrieveValueOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
             field="Year",
             target="2016"
         )
@@ -1316,14 +1316,15 @@ spec_2eiyyw562tcvjypp = {
         FilterOp(
             id="n2",
             meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
-            field="Country",
-            operator="<"
+            field="Year",
+            include=["2007", "2015"]
         )
     ],
     "ops3":[
         CountOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
+            field="Year"
         )
     ]
 }
@@ -1496,131 +1497,142 @@ spec_74p313e1n8rzkfzp = {
 spec_7mgydgux0ay0flv4 = {
     "ops":[
         FilterOp(
-      id="n1",
-      meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2003", "2004", "2005"]
-    ),
-    AverageOp(
-      id="n2",
-      meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n3",
-      meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2004", "2005", "2006"]
-    ),
-    AverageOp(
-      id="n4",
-      meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n5",
-      meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2005", "2006", "2007"]
-    ),
-    AverageOp(
-      id="n6",
-      meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n7",
-      meta=OpsMeta(nodeId="n7", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2006", "2007", "2008"]
-    ),
-    AverageOp(
-      id="n8",
-      meta=OpsMeta(nodeId="n7", inputs=["n7"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n9",
-      meta=OpsMeta(nodeId="n9", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2007", "2008", "2009"]
-    ),
-    AverageOp(
-      id="n10",
-      meta=OpsMeta(nodeId="n10", inputs=["n9"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n11",
-      meta=OpsMeta(nodeId="n11", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2009", "2010", "2011"]
-    ),
-    AverageOp(
-      id="n12",
-      meta=OpsMeta(nodeId="n12", inputs=["n11"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n13",
-      meta=OpsMeta(nodeId="n13", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2010", "2011", "2012"]
-    ),
-    AverageOp(
-      id="n14",
-      meta=OpsMeta(nodeId="n14", inputs=["n13"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n15",
-      meta=OpsMeta(nodeId="n15", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2011", "2012", "2013"]
-    ),
-    AverageOp(
-      id="n16",
-      meta=OpsMeta(nodeId="n16", inputs=["n15"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n17",
-      meta=OpsMeta(nodeId="n17", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2013", "2014", "2015"]
-    ),
-    AverageOp(
-      id="n18",
-      meta=OpsMeta(nodeId="n16", inputs=["n17"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n19",
-      meta=OpsMeta(nodeId="n19", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2015", "2016", "2017"]
-    ),
-    AverageOp(
-      id="n20",
-      meta=OpsMeta(nodeId="n20", inputs=["n19"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
-    FilterOp(
-      id="n21",
-      meta=OpsMeta(nodeId="n21", inputs=[], sentenceIndex=1),
-      field="Year",
-      include = ["2017", "2018", "2019"]
-    ),
-    AverageOp(
-      id="n22",
-      meta=OpsMeta(nodeId="n22", inputs=["n21"], sentenceIndex=1),
-      field="Number of units sold"
-    ),
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2003", "2004", "2005"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2004", "2005", "2006"]
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2005", "2006", "2007"]
+        ),
+        AverageOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2006", "2007", "2008"]
+        ),
+        AverageOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n7", inputs=["n7"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2007", "2008", "2009"]
+        ),
+        AverageOp(
+            id="n10",
+            meta=OpsMeta(nodeId="n10", inputs=["n9"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n11",
+            meta=OpsMeta(nodeId="n11", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2009", "2010", "2011"]
+        ),
+        AverageOp(
+            id="n12",
+            meta=OpsMeta(nodeId="n12", inputs=["n11"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n13",
+            meta=OpsMeta(nodeId="n13", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2010", "2011", "2012"]
+        ),
+        AverageOp(
+            id="n14",
+            meta=OpsMeta(nodeId="n14", inputs=["n13"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n15",
+            meta=OpsMeta(nodeId="n15", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2011", "2012", "2013"]
+        ),
+        AverageOp(
+            id="n16",
+            meta=OpsMeta(nodeId="n16", inputs=["n15"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n17",
+            meta=OpsMeta(nodeId="n17", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2012", "2013", "2014"]
+        ),
+        AverageOp(
+            id="n18",
+            meta=OpsMeta(nodeId="n16", inputs=["n17"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n19",
+            meta=OpsMeta(nodeId="n19", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2013", "2014", "2015"]
+        ),
+        AverageOp(
+            id="n20",
+            meta=OpsMeta(nodeId="n16", inputs=["n19"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n21",
+            meta=OpsMeta(nodeId="n21", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2015", "2016", "2017"]
+        ),
+        AverageOp(
+            id="n22",
+            meta=OpsMeta(nodeId="n22", inputs=["n21"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
+        FilterOp(
+            id="n23",
+            meta=OpsMeta(nodeId="n23", inputs=[], sentenceIndex=1),
+            field="Year",
+            include = ["2017", "2018", "2019"]
+        ),
+        AverageOp(
+            id="n24",
+            meta=OpsMeta(nodeId="n24", inputs=["n23"], sentenceIndex=1),
+            field="Number of units sold"
+        ),
     ],
     "ops2":[
         FindExtremumOp(
-            id="n23",
-            meta=OpsMeta(nodeId="n23", inputs=["n2", "n4", "n6", "n8", "n10", "n12", "n14", "n16", "n18", "n20", "n22"], sentenceIndex=2),
+            id="n25",
+            meta=OpsMeta(nodeId="n25", inputs=["n2", "n4", "n6", "n8", "n10", "n12", "n14", "n16", "n18", "n20", "n22", "24"], sentenceIndex=2),
             field="Number of units sold",
             which="max"
         )
@@ -4000,14 +4012,14 @@ spec_7272hodb02i6e09q = {
     "ops2":[
         FilterOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
             field="Year",
             operator="between",
             value=["2015", "2019"]
         ),
         FindExtremumOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=["n4"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n4", inputs=["n4"], sentenceIndex=2),
             field="Population growth compared to previous year",
             which="max"
         )
@@ -4260,8 +4272,8 @@ spec_0k75gqf8ckjikdym = {
     ],
     "ops2":[
         RetrieveValueOp(
-            id="n1",
-            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
             field="Year",
             target="2010"
         )
@@ -4927,10 +4939,10 @@ spec_0vfqjaxeiv96ww7g = {
     "ops3": [
         DiffOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=["n1", "n2"], sentenceIndex=3),
+            meta=OpsMeta(nodeId="n4", inputs=["n2", "n3"], sentenceIndex=3),
             field="Percentage",
-            targetA="ref:n3",
-            targetB="ref:n2"
+            targetA="ref:n2",
+            targetB="ref:n3"
         )
     ]
 }
@@ -5356,7 +5368,9 @@ spec_0abj8blv663ussbr = {
         DiffOp(
             id="n3",
             meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"], sentenceIndex=2),
-            field="Market size in billion US dollars"
+            field="Market size in billion US dollars",
+            targetA="ref:n1",
+            targetB="ref:n2"
         )
     ]
 }
@@ -5691,7 +5705,7 @@ spec_0bunvsqd54e3qahz = {
         ),
         FilterOp(
             id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
             field="Year",
             include=["2010"]
         ),
@@ -5703,7 +5717,7 @@ spec_0bunvsqd54e3qahz = {
         ),
         FilterOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
             field="Year",
             include=["2016"]
         ),
@@ -5814,12 +5828,12 @@ spec_05qg5ubxklojfze7 = {
     "ops2": [
         FindExtremumOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
             field="Share_of_Respondents",
             which="max"
         )
     ],
-    "ops4":[
+    "ops3":[
         
     ]
 }
@@ -6026,7 +6040,7 @@ spec_2hjkdo5w242alvjd = {
     "ops2": [
         PairDiffOp(
             id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=2),
             field="Percentage_of_Respondents",
             by="Opinion",
             groupA="Dissatisfied",
@@ -6036,13 +6050,13 @@ spec_2hjkdo5w242alvjd = {
     "ops3": [
         FilterOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=3),
             field="Year",
             include=["2006", "2011"]
         ),
         FilterOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n4", inputs=[], sentenceIndex=3),
             field="Year",
             include=["2007", "2008", "2009", "2010"]
         )
@@ -6050,12 +6064,12 @@ spec_2hjkdo5w242alvjd = {
     "ops4": [
         CountOp(
             id="n5",
-            meta=OpsMeta(nodeId="n5", inputs=["n3"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n5", inputs=["n3"], sentenceIndex=4),
             field="Year",
         ),
         CountOp(
             id="n6",
-            meta=OpsMeta(nodeId="n6", inputs=["n4"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n6", inputs=["n4"], sentenceIndex=4),
             field="Year",
         ),
         
@@ -6237,7 +6251,7 @@ spec_2kmpy10btl65kr2j = {
     "ops2": [
         FilterOp(
             id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
             field="Opinion_Type",
             group="Favorable view of U.S."
         )
@@ -6245,12 +6259,12 @@ spec_2kmpy10btl65kr2j = {
     "ops3": [
         SumOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
             field="Percentage_of_Respondents",
         ),
         ScaleOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=3),
             target="ref:n3",
             factor=1/3
         )
@@ -6413,7 +6427,7 @@ spec_2s65jcap9pn289qx = {
     "ops3": [
         SumOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
             field="Population_Million_Inhabitants",
         )
     ]
@@ -6488,13 +6502,13 @@ spec_66va2s35es5t86l3 = {
     "ops3": [
         FindExtremumOp(
             id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=3),
             field="In millions",
             which="max"
         ),
         RetrieveValueOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
+            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=3),
             field="Year",
             target=2010
         )
@@ -6708,12 +6722,12 @@ spec_0dglnk2wbf5ll15t = {
     "ops2": [
         FilterOp(
             id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=2),
             group="Good"
         ),
         AverageOp(
             id="n4",
-            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=1),
+            meta=OpsMeta(nodeId="n4", inputs=["n3"], sentenceIndex=2),
             field="Share of Respondents (%)"
         )
     ],
@@ -6931,7 +6945,7 @@ spec_0egzejn5mejtnfdm = {
         FilterOp(
             id="n3",
             meta=OpsMeta(nodeId="n3", inputs=[], sentenceIndex=1),
-            group="Scotland"
+            group="England & Wales"
         ),
         FindExtremumOp(
             id="n4",
