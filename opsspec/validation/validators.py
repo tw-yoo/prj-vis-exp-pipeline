@@ -4,12 +4,12 @@ import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from ..core.models import ChartContext
-from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS
+from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS, get_contract, resolve_chart_family
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
-from ..specs.range_sort_select import DetermineRangeOp, FindExtremumOp, NthOp, SortOp
+from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
 from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
@@ -344,6 +344,14 @@ def validate_operation(
     if not is_allowed_op(op.op):
         raise ValueError(f'Unsupported operation "{op.op}"')
 
+    contract = get_contract(op.op)
+    chart_family = resolve_chart_family(chart_context)
+    if chart_family not in contract.allowed_chart_families:
+        raise ValueError(
+            f'op "{op.op}" is not allowed for chart_family="{chart_family}". '
+            f"Allowed chart families: {list(contract.allowed_chart_families)}"
+        )
+
     if isinstance(op, FilterOp):
         return validate_filter_spec(op, chart_context=chart_context, runtime_scalars=runtime_scalars)
 
@@ -354,7 +362,6 @@ def validate_operation(
             CountOp,
             FindExtremumOp,
             SortOp,
-            DetermineRangeOp,
             RetrieveValueOp,
             LagDiffOp,
             NthOp,

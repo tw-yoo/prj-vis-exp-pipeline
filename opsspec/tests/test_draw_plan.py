@@ -12,7 +12,7 @@ from opsspec.specs.aggregate import SumOp
 from opsspec.specs.add import AddOp
 from opsspec.specs.scale import ScaleOp
 from opsspec.specs.set_op import SetOp
-from opsspec.specs.range_sort_select import DetermineRangeOp, FindExtremumOp
+from opsspec.specs.range_sort_select import FindExtremumOp
 from opsspec.runtime.scheduler import schedule_ops_spec
 
 
@@ -133,7 +133,6 @@ class DrawPlanTest(unittest.TestCase):
                     field="count",
                     meta=OpsMeta(nodeId="n7", sentenceIndex=1),
                 ),
-                DetermineRangeOp(op="determineRange", field="count", meta=OpsMeta(nodeId="n8", sentenceIndex=1)),
             ]
         }
 

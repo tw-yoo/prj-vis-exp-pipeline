@@ -16,7 +16,6 @@ _STRICT_SINGLE_GROUP_OPS: Set[str] = {
     "count",
     "findExtremum",
     "sort",
-    "determineRange",
     "retrieveValue",
     "lagDiff",
     "nth",

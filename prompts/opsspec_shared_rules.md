@@ -46,17 +46,23 @@ Shared rules (apply to ALL modules):
     This means inclusive slice from first "2009" to first "2014" after it.
   - For pairwise differences, prefer op="pairDiff" with by/groupA/groupB.
   - If groupA/groupB are values of a non-default field, set pairDiff.seriesField explicitly.
-8) SumOp rule:
+
+8) Chart-specific operation availability:
+- Always follow the Operation contract's allowed_ops for the current chart.
+- For chart_family="bar_simple" or chart_family="line_simple", NEVER create op="pairDiff".
+- pairDiff is allowed only when the chart has a series field, such as grouped bar, stacked bar, or multi-series line.
+
+9) SumOp rule:
 - op="sum" is allowed only for bar charts (simple/stacked).
 - SumOp.group may be a string or list of strings.
 - In stacked bar, group=None or multi-group means sum all values.
 - SumOp is row aggregation only (not scalar arithmetic).
 
-9) AddOp rule:
+10) AddOp rule:
 - Use op="add" to add two scalar values.
 - targetA/targetB must be scalar refs ("ref:nX") or numeric literals.
 
-10) Final artifact consistency:
+11) Final artifact consistency:
 - For each request, produce one primary final artifact type (scalar, boolean, or row-list).
 - Intermediate artifacts may differ, but each intermediate node should contribute to deriving that final artifact.
 - Avoid dangling branches that do not feed into any later node.

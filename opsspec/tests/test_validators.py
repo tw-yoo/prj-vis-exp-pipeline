@@ -10,6 +10,7 @@ from opsspec.specs.filter import FilterOp
 from opsspec.specs.range_sort_select import FindExtremumOp
 from opsspec.specs.scale import ScaleOp
 from opsspec.specs.union import parse_operation_spec
+from opsspec.runtime.op_registry import build_ops_contract_for_prompt
 from opsspec.validation.validators import validate_operation
 
 
@@ -171,6 +172,80 @@ class ValidatorsTest(unittest.TestCase):
         )
         normalized, _ = validate_operation(op, chart_context=self.context)
         self.assertEqual(normalized.op, "pairDiff")
+
+    def test_determine_range_is_not_registered_operation(self) -> None:
+        contract = build_ops_contract_for_prompt()
+        self.assertNotIn("determineRange", contract.get("allowed_ops", []))
+        self.assertNotIn("determineRange", contract.get("op_contracts", {}))
+        with self.assertRaises(Exception):
+            parse_operation_spec({"op": "determineRange", "field": "Revenue_Million_Euros"})
+
+    def test_pairdiff_rejected_for_simple_bar(self) -> None:
+        simple_bar_context = ChartContext(
+            fields=["season", "Revenue_Million_Euros"],
+            dimension_fields=["season"],
+            measure_fields=["Revenue_Million_Euros"],
+            primary_dimension="season",
+            primary_measure="Revenue_Million_Euros",
+            series_field=None,
+            categorical_values={"season": ["2016/17", "2017/18"]},
+            mark="bar",
+            is_stacked=False,
+        )
+        op = PairDiffOp(
+            op="pairDiff",
+            by="season",
+            field="Revenue_Million_Euros",
+            groupA="2016/17",
+            groupB="2017/18",
+        )
+        with self.assertRaisesRegex(ValueError, 'op "pairDiff" is not allowed for chart_family="bar_simple"'):
+            validate_operation(op, chart_context=simple_bar_context)
+
+    def test_pairdiff_rejected_for_simple_line(self) -> None:
+        simple_line_context = ChartContext(
+            fields=["season", "Revenue_Million_Euros"],
+            dimension_fields=["season"],
+            measure_fields=["Revenue_Million_Euros"],
+            primary_dimension="season",
+            primary_measure="Revenue_Million_Euros",
+            series_field=None,
+            categorical_values={"season": ["2016/17", "2017/18"]},
+            mark="line",
+            is_stacked=False,
+        )
+        op = PairDiffOp(
+            op="pairDiff",
+            by="season",
+            field="Revenue_Million_Euros",
+            groupA="2016/17",
+            groupB="2017/18",
+        )
+        with self.assertRaisesRegex(ValueError, 'op "pairDiff" is not allowed for chart_family="line_simple"'):
+            validate_operation(op, chart_context=simple_line_context)
+
+    def test_prompt_contract_excludes_pairdiff_for_simple_charts(self) -> None:
+        simple_bar_context = ChartContext(
+            fields=["season", "Revenue_Million_Euros"],
+            dimension_fields=["season"],
+            measure_fields=["Revenue_Million_Euros"],
+            primary_dimension="season",
+            primary_measure="Revenue_Million_Euros",
+            series_field=None,
+            categorical_values={"season": ["2016/17", "2017/18"]},
+            mark="bar",
+            is_stacked=False,
+        )
+        contract = build_ops_contract_for_prompt(chart_context=simple_bar_context)
+        self.assertEqual(contract.get("chart_family"), "bar_simple")
+        self.assertNotIn("pairDiff", contract.get("allowed_ops", []))
+        self.assertIn("pairDiff", contract.get("unavailable_ops", {}))
+
+        simple_line_context = simple_bar_context.model_copy(update={"mark": "line"})
+        contract = build_ops_contract_for_prompt(chart_context=simple_line_context)
+        self.assertEqual(contract.get("chart_family"), "line_simple")
+        self.assertNotIn("pairDiff", contract.get("allowed_ops", []))
+        self.assertIn("pairDiff", contract.get("unavailable_ops", {}))
 
     def test_pairdiff_rejects_same_groups(self) -> None:
         op = PairDiffOp(

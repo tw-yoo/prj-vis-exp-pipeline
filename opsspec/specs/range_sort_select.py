@@ -20,17 +20,6 @@ class FindExtremumOp(BaseOpFields):
     rank: Optional[int] = None  # 1=최대/최소, 2=두 번째, ...
 
 
-class DetermineRangeOp(BaseOpFields):
-    """범위(min/max) 파악.
-    필수: `field`.
-    선택: `group`으로 series/group 제한.
-    """
-
-    op: Literal["determineRange"] = "determineRange"
-    field: Optional[str] = None  # 범위를 계산할 수치 필드명
-    group: Optional[str] = None  # group/series 이름
-
-
 class SortOp(BaseOpFields):
     """정렬된 리스트 반환.
     필수: `field` 또는 `orderField` 중 하나 권장.

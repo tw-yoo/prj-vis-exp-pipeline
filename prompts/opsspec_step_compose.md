@@ -58,7 +58,7 @@ Critical rules:
    - Do NOT filter on series_field directly.
    - Restrict series via op_spec.group / op_spec.groupA / op_spec.groupB when needed.
    - For FilterOp, op_spec.group may be a string or list of strings. A list means OR semantics.
-   - IMPORTANT: For average/count/findExtremum/sort/determineRange/retrieveValue/lagDiff/nth, group MUST be a single series value string.
+   - IMPORTANT: For average/count/findExtremum/sort/retrieveValue/lagDiff/nth, group MUST be a single series value string.
    - Never use chunk-layer tokens ("ops", "ops2", ...) as group values.
    - Never put dimension subsets (e.g., years like ["2010","2013"]) into group.
 6) Filter MUST choose a mode:

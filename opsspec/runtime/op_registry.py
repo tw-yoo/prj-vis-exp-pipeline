@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type
 
+from ..core.models import ChartContext
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.base import BaseOpFields
 from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
-from ..specs.range_sort_select import DetermineRangeOp, FindExtremumOp, NthOp, SortOp
+from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
 from ..specs.set_op import SetOp
 
 COMMON_FIELDS: Tuple[str, ...] = ("op", "id", "meta", "chartId")
+ALL_CHART_FAMILIES: Tuple[str, ...] = (
+    "bar_simple",
+    "bar_grouped",
+    "bar_stacked",
+    "line_simple",
+    "line_multi",
+    "unknown",
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +30,7 @@ class OpContract:
     model_cls: Type[BaseOpFields]
     required_fields: Tuple[str, ...]
     semantic_rules: Tuple[str, ...]
+    allowed_chart_families: Tuple[str, ...] = ALL_CHART_FAMILIES
 
 
 def _alias_fields(model_cls: Type[BaseOpFields]) -> Tuple[str, ...]:
@@ -30,6 +40,23 @@ def _alias_fields(model_cls: Type[BaseOpFields]) -> Tuple[str, ...]:
             continue
         names.append(field_info.alias or field_name)
     return tuple(sorted(names))
+
+
+def resolve_chart_family(chart_context: ChartContext) -> str:
+    if chart_context.mark == "bar":
+        if chart_context.is_stacked:
+            return "bar_stacked"
+        if chart_context.series_field:
+            return "bar_grouped"
+        return "bar_simple"
+    if chart_context.mark == "line":
+        return "line_multi" if chart_context.series_field else "line_simple"
+    return "unknown"
+
+
+def is_op_allowed_for_chart(op_name: str, chart_context: ChartContext) -> bool:
+    contract = get_contract(op_name)
+    return resolve_chart_family(chart_context) in contract.allowed_chart_families
 
 
 _OP_SEQUENCE: Tuple[OpContract, ...] = (
@@ -70,17 +97,6 @@ _OP_SEQUENCE: Tuple[OpContract, ...] = (
             "field should be a numeric measure field; defaults to primary_measure when omitted.",
             "group restricts to a specific series slice before finding the extremum.",
             "Result is a scalar (the target label with the extreme value).",
-        ),
-    ),
-    OpContract(
-        op_name="determineRange",
-        model_cls=DetermineRangeOp,
-        required_fields=tuple(),
-        semantic_rules=(
-            "For numeric field: returns the min and max numeric values.",
-            "For categorical field: returns alphabetically first and last target labels.",
-            "field defaults to primary_measure when omitted.",
-            "group restricts to a specific series slice before computing the range.",
         ),
     ),
     OpContract(
@@ -168,8 +184,11 @@ _OP_SEQUENCE: Tuple[OpContract, ...] = (
         op_name="pairDiff",
         model_cls=PairDiffOp,
         required_fields=("by", "groupA", "groupB"),
+        allowed_chart_families=("bar_grouped", "bar_stacked", "line_multi", "unknown"),
         semantic_rules=(
             "Computes per-key differences between two groups by a key field (by).",
+            "Allowed only for charts with a series field: grouped bar, stacked bar, or multi-series line.",
+            "Do not use pairDiff for simple bar or simple line charts.",
             "by must be a dimension field used as the result key.",
             "seriesField (optional) chooses which field groupA/groupB refer to; defaults to chart_context.series_field.",
             "Result is a row list keyed by `by`, not a single scalar.",
@@ -245,13 +264,20 @@ def get_contract(op_name: str) -> OpContract:
     return OP_REGISTRY[op_name]
 
 
-def build_ops_contract_for_prompt() -> Dict[str, object]:
+def build_ops_contract_for_prompt(chart_context: Optional[ChartContext] = None) -> Dict[str, object]:
+    chart_family = resolve_chart_family(chart_context) if chart_context is not None else None
+    active_contracts = [
+        contract
+        for contract in _OP_SEQUENCE
+        if chart_family is None or chart_family in contract.allowed_chart_families
+    ]
+
     all_fields: List[str] = sorted(
-        {field_name for contract in _OP_SEQUENCE for field_name in _alias_fields(contract.model_cls)}
+        {field_name for contract in active_contracts for field_name in _alias_fields(contract.model_cls)}
     )
 
     op_contracts: Dict[str, Dict[str, object]] = {}
-    for contract in _OP_SEQUENCE:
+    for contract in active_contracts:
         allowed = set(_alias_fields(contract.model_cls))
         required = set(contract.required_fields)
         optional = sorted(allowed - required)
@@ -260,12 +286,19 @@ def build_ops_contract_for_prompt() -> Dict[str, object]:
             "required_fields": sorted(required),
             "optional_fields": optional,
             "forbidden_fields": forbidden,
+            "allowed_chart_families": list(contract.allowed_chart_families),
             "semantic_rules": list(contract.semantic_rules),
         }
 
     return {
-        "allowed_ops": list(ALLOWED_OPS),
-        "legacy_non_draw_ops": list(LEGACY_NON_DRAW_OPS),
+        "chart_family": chart_family,
+        "allowed_ops": [contract.op_name for contract in active_contracts],
+        "legacy_non_draw_ops": [contract.op_name for contract in active_contracts if contract.op_name != "setOp"],
+        "unavailable_ops": {
+            contract.op_name: f'not allowed for chart_family="{chart_family}"'
+            for contract in _OP_SEQUENCE
+            if chart_family is not None and chart_family not in contract.allowed_chart_families
+        },
         "common_fields": list(COMMON_FIELDS),
         "op_contracts": op_contracts,
         "meta_rules": {

@@ -9,7 +9,7 @@ from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
-from ..specs.range_sort_select import DetermineRangeOp, FindExtremumOp, NthOp, SortOp
+from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
 from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
@@ -153,8 +153,6 @@ class OpsSpecExecutor:
             return self._op_filter(data, op)
         if isinstance(op, FindExtremumOp):
             return self._op_find_extremum(data, op)
-        if isinstance(op, DetermineRangeOp):
-            return self._op_determine_range(data, op)
         if isinstance(op, CompareOp):
             return self._op_compare(data, op)
         if isinstance(op, CompareBoolOp):
@@ -402,30 +400,6 @@ class OpsSpecExecutor:
         pick_max = op.which != "min"
         sorted_values = sorted(sliced, key=lambda item: self._value_key(item, op.field))
         return [sorted_values[-rank] if pick_max else sorted_values[rank - 1]]
-
-    def _op_determine_range(self, data: List[DatumValue], op: DetermineRangeOp) -> List[DatumValue]:
-        sliced = self._slice_by_group(data, op.group)
-        if not sliced:
-            return []
-        kind = self._infer_field_kind(op.field)
-        if kind == "category":
-            targets = sorted({item.target for item in sliced})
-            return [
-                DatumValue(category="range", measure=None, target="__min__", group=op.group, value=0.0, name=targets[0]),
-                DatumValue(
-                    category="range",
-                    measure=None,
-                    target="__max__",
-                    group=op.group,
-                    value=max(0.0, float(len(targets) - 1)),
-                    name=targets[-1],
-                ),
-            ]
-        values = [item.value for item in sliced]
-        return [
-            DatumValue(category="range", measure=op.field, target="__min__", group=op.group, value=min(values)),
-            DatumValue(category="range", measure=op.field, target="__max__", group=op.group, value=max(values)),
-        ]
 
     def _op_compare(self, data: List[DatumValue], op: CompareOp) -> List[DatumValue]:
         left = self._slice_for_selector(data, op.targetA, op.groupA or op.group, op.field)

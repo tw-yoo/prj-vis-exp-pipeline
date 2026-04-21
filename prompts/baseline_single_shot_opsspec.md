@@ -126,7 +126,7 @@ Series restriction (CRITICAL):
     { "op": "filter", "field": "<categorical_field>", "include": ["2016"], "group": ["A","B"] }
   - FilterOp group-only mode for series restriction:
     { "op": "filter", "group": ["A","B"] }
-- For average/count/findExtremum/sort/determineRange/retrieveValue/lagDiff/nth,
+- For average/count/findExtremum/sort/retrieveValue/lagDiff/nth,
   group MUST be a single series value string.
 - Never use sentence-layer tokens ("ops", "ops2") as group values.
 - Never put dimension subsets (e.g., years like ["2010","2013"]) into group.

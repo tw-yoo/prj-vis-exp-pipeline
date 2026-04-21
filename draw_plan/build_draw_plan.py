@@ -61,7 +61,6 @@ HIGHLIGHT_OPS: Set[str] = {
 SCALAR_LINE_OPS: Set[str] = {"average", "diff", "count", "compare", "compareBool", "add", "scale", "findExtremum"}
 SCALAR_TEXT_OPS: Set[str] = {"average", "diff", "count", "compare", "compareBool", "add", "scale", "sum", "findExtremum"}
 SUM_OPS: Set[str] = {"sum"}
-RANGE_BAND_OPS: Set[str] = {"determineRange"}
 CONNECT_OPS: Set[str] = {"compare", "diff"}
 LINE_ANCHORED_TEXT_OPS: Set[str] = {"average", "diff", "compare", "findExtremum"}
 TEXT_ABOVE_LINE_GAP_NORM = 0.03125
@@ -180,42 +179,6 @@ def _normalized_scalar_y(chart_context: ChartContext, field: str | None, value: 
     ratio = max(0.0, min(1.0, ratio))
     # draw.text normalized y uses bottom=0, top=1.
     return ratio
-
-
-def _resolve_range_band(result_rows: List[Any]) -> DrawBandSpec | None:
-    min_row = None
-    max_row = None
-    for row in result_rows:
-        target = str(getattr(row, "target", "") or "")
-        if target == "__min__":
-            min_row = row
-        elif target == "__max__":
-            max_row = row
-    if min_row is None or max_row is None:
-        return None
-
-    min_name = getattr(min_row, "name", None)
-    max_name = getattr(max_row, "name", None)
-    if isinstance(min_name, str) and isinstance(max_name, str) and min_name and max_name:
-        return DrawBandSpec(
-            axis="x",
-            range=[min_name, max_name],
-            label="range",
-            style=DrawBandStyle(fill="rgba(59,130,246,0.16)", stroke="#3b82f6", strokeWidth=1.5, opacity=1.0),
-        )
-
-    min_value = _resolve_scalar([min_row])
-    max_value = _resolve_scalar([max_row])
-    if min_value is None or max_value is None:
-        return None
-    lo = min(min_value, max_value)
-    hi = max(min_value, max_value)
-    return DrawBandSpec(
-        axis="y",
-        range=[float(lo), float(hi)],
-        label="range",
-        style=DrawBandStyle(fill="rgba(59,130,246,0.14)", stroke="#3b82f6", strokeWidth=1.5, opacity=1.0),
-    )
 
 
 def _normalize_selector_values(raw: Any) -> List[str]:
@@ -583,17 +546,6 @@ def build_draw_ops_spec(
                                 extra_inputs=[],
                             )
                         )
-
-            if op_name in RANGE_BAND_OPS:
-                band = _resolve_range_band(result_rows)
-                if band is not None:
-                    draw_ops.append(
-                        _with_draw_context(
-                            DrawBandOp(meta=meta, band=band),
-                            chart_id=None,
-                            extra_inputs=[],
-                        )
-                    )
 
             if op_name == "setOp":
                 targets = _unique_targets(result_rows)

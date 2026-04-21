@@ -314,7 +314,7 @@ def _classify_node_result_kind(
     op_name = str(op.op or "").strip()
     inputs = _direct_input_ids(op)
 
-    if op_name in {"average", "sum", "count", "determineRange"}:
+    if op_name in {"average", "sum", "count"}:
         return "source-aggregate" if not inputs else "synthetic-result"
 
     if op_name in {"diff", "add", "scale", "compareBool", "pairDiff", "lagDiff"}:

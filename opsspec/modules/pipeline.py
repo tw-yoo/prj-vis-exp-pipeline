@@ -557,7 +557,7 @@ class OpsSpecPipeline:
             chart_context.series_field or "-",
         )
 
-        ops_contract = build_ops_contract_for_prompt()
+        ops_contract = build_ops_contract_for_prompt(chart_context=chart_context)
         roles_summary = {
             "primary_measure": chart_context.primary_measure,
             "primary_dimension": chart_context.primary_dimension,

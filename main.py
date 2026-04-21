@@ -1009,7 +1009,7 @@ async def generate_grammar_baseline_single_shot(request: GenerateGrammarRequest)
             roles_summary, series_domain, measure_fields, explanation_sentences,
         ) = _build_common_context(request)
 
-        ops_contract = build_ops_contract_for_prompt()
+        ops_contract = build_ops_contract_for_prompt(chart_context=chart_context)
         budget = tune_few_shot_budget(
             question=request.question,
             explanation=request.explanation,

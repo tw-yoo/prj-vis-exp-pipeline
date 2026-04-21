@@ -112,14 +112,14 @@ Rules:
 - Series restriction:
   - Never represent series selection as a filter on the series field.
   - paramsHint.group is ONLY for series restriction on substantive ops.
-  - Use paramsHint.group="<series value>" on single-group ops such as average/count/findExtremum/sort/determineRange/retrieveValue/lagDiff/nth.
+  - Use paramsHint.group="<series value>" on single-group ops such as average/count/findExtremum/sort/retrieveValue/lagDiff/nth.
   - Use paramsHint.group=["A","B"] only for FilterOp series restriction; a list means OR semantics across listed series values.
   - Never use paramsHint.group to encode primary-dimension subsets such as years/categories/labels.
   - If the explanation names a subset of primary-dimension values, emit a filter task with include/exclude/between instead.
 - Subset-based aggregate pattern:
   - When an aggregate/ranking op applies to a subset of primary-dimension values, inventory must emit:
     1. a subset-selection task (typically filter on @primary_dimension or another categorical field)
-    2. a substantive op that consumes that subset later (average/count/findExtremum/sort/determineRange/etc.)
+    2. a substantive op that consumes that subset later (average/count/findExtremum/sort/etc.)
   - Do NOT encode the subset directly inside paramsHint.group for those ops.
 - Filter task must choose a mode:
   - If you output a task with op="filter", paramsHint MUST include EITHER:

@@ -184,19 +184,6 @@ Notes:
 }
 ```
 
-## determineRange
-
-```json
-{
-  "op": "determineRange",
-  "id": "n4",
-  "chartId": "chart-1",
-  "meta": { "nodeId": "n4", "inputs": ["n2"], "sentenceIndex": 2 },
-  "field": "Revenue_Million_Euros",
-  "group": "Broadcasting"
-}
-```
-
 ## compare
 
 ```json

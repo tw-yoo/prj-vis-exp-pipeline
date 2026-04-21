@@ -202,7 +202,6 @@
 | Data op | 기본 draw action | 추가 규칙 |
 | --- | --- | --- |
 | `retrieveValue`, `filter`, `findExtremum`, `nth`, `lagDiff`, `setOp`, `compare`, `pairDiff` | `highlight` | result의 target key 기준 |
-| `determineRange` | `band` | categorical은 x-band, numeric은 y-band |
 | `sum` | `sum` | scalar sum annotation |
 | `average`, `count`, `compareBool`, `add`, `scale` | `line` + `text` | 수평선 + scalar label |
 | `compare`, `diff` | `line(mode=connect)` | target selector가 있으면 pair/connectBy 사용 |
