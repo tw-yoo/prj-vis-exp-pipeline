@@ -7395,26 +7395,1850 @@ spec_21fa7gb8l1ix6yfm = {
     ]
 }
 
+spec_54gh54f24irr63pb = {
+    "ops":[
+    FilterOp(
+        id="n1",
+        meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+        field="Year",
+        include=["2018"]
+    ),
+    FilterOp(
+        id="n2",
+        meta=OpsMeta(nodeId="n2", inputs=[], sentenceIndex=1),
+        group=""
+    ),
+    FindExtremumOp(
+        id="n3",
+        meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=1),
+        field="Number_of_States"
+    )
+    ]
+}
 
-spec_0a2itmazs9jgmmgh = {
+spec_1p6uue3hxdxit3ey = {
     "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="30 to 44 years"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            include=["Yes"]
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Percentage of respondents",
+            operator=">",
+            value=0.21
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"]),
+            include=["No"]
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n1"]),
+            field="Percentage of respondents",
+            operator=">",
+            value=0.51
+        )
+    ]
+}
 
+
+spec_1fngt6cb1d60a2ow = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Region/Entity",
+            exclude=["Metro Total"]
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Number of employees"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Number of employees",
+            operator=">",
+            value=50000
+        )
+    ]
+}
+
+spec_6rvtt4egfl5nmyue = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="female"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year",
+            include=["2012", "2013", "2014", "2015", "2016", "2017"]
+        ),
+        SortOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            order="desc"
+        ),
+        FindExtremumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Life expectancy at birth in years",
+            which="max",
+            rank=2
+        )
+    ]
+}
+
+spec_1suppecte0dm69gm = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Not at all"
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Percentage of respondents"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Respondent Group",
+            include=["All adults"]
+        ),
+        CompareOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n2", inputs=["n3"]),
+            which="max",
+            targetA="ref:n2",
+            targetB="ref:n3"
+        )
+    ]
+}
+
+spec_1e56qqj7moat9gqa = {
+    "ops": [
+        SumOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Spending in billion US dollars"
+        )
+    ]
+}
+
+spec_6p4fnscalopvysnn = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            operator=">",
+            value=40
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of the population",
+            which="max"
+        )
+    ]
+}
+
+spec_50y71e5i2n28gkbx = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2017", "2018"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            group=["Sportswear", "Running"]
+        ),
+        ScaleOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            target="ref:n2",
+            factor=1/4
+        )
+    ]
+}
+
+
+spec_75yz7pci1w1dif3g = {
+    "ops": [
+        PairDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Share_of_Respondents",
+            by="Crisp_Flavor",
+            groupA="None of these",
+            groupB="Cheese and onion"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Age_Group",
+            include=["18–24"]
+        ),
+        SortOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1"]),
+            field="Share_of_Respondents",
+            order="desc"
+        ),
+        NthOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n2", inputs=["n3"]),
+            field="Share_of_Respondents",
+            n=3
+        )
+    ]
+}
+
+
+spec_7extlfw651gqc5fk = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Large"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Percentage",
+            which="max"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="Small"
+        ),
+        FindExtremumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n2", inputs=["n3"]),
+            field="Percentage",
+            which="min"
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"]),
+            field="Percentage",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        ),
+        SumOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=[]),
+            field="Percentage",
+        ),
+        ScaleOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n6"]),
+            target="ref:n6",
+            factor=1/10
+        ),
+        CompareBoolOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n5", "n7"]),
+            operator="==",
+            targetA="ref:n5",
+            targetB="refn7"
+        )
+    ]
+}
+
+spec_6rqevjp16hadlyly = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Male"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            include=["2007/08"]
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1"]),
+            include=["2011/12"]
+        ),
+        DiffOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n2", "n3"]),
+            field="Percentage of tests passed",
+            targetA="ref:n2",
+            targetB="ref:n3"
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            group="Female"
+        ),
+        FilterOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"]),
+            include=["2007/08"]
+        ),
+        FilterOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n5"]),
+            include=["2011/12"]
+        ),
+        DiffOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"]),
+            field="Percentage of tests passed",
+            targetA="ref:n6",
+            targetB="ref:n7"
+        ),
+        CompareBoolOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=["n4", "n8"]),
+            field="Percentage of tests passed",
+            operator="==",
+            targetA="ref:n4",
+            targetB="ref:n8"
+        )
+    ]
+}
+
+
+spec_1esx2fbduhqn7knk = {
+    "ops": [
+        FindExtremumOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            which="min"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Disease Category",
+            exclude=["Tuberculosis", "Multidrug-resistant HIV/AIDS - Tuberculosis", "Extensively drug-resistant HIV/AIDS - Tuberculosis"]
+        ),
+        SumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Deaths"
+        ),
+        ScaleOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"]),
+            target="ref:n4",
+            factor=1/4
+        )
+    ]
+}
+
+
+spec_1epzpacytv3wx2i6 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2010", "2011", "2012", "2013"]
+        ),
+        LagDiffOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Market size in million GBP",
+            signed=True
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Market size in million GBP",
+            operator=">",
+            value=0
+        ),
+        CountOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Market size in million GBP"
+        ),
+        CompareBoolOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"]),
+            operator="==",
+            targetA="ref:n4",
+            targetB=4,
+            
+        )
+    ]
+}
+
+spec_1qm2z3ooawf339jz = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="East"
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of respondents"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="Scotland"
+        ),
+        SumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Share of respondents"
+        ),
+        CompareOp(
+            id="m5",
+            field="Share of respondents",
+            which="max",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
+
+spec_95yhyqjyeu4fohbj = {
+    "ops": [
+        FindExtremumOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Number of people in millions",
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            field="Number of people in millions",
+            which="min"
+        ),
+        AverageOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"]),
+            field="Number of people in millions",
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=[]),
+            field="Year",
+            include=["2010"]
+        ),
+        CompareBoolOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n3", "n4"]),
+            field="Number of people in millions",
+            targetA="ref:n3",
+            targetB="ref:n4",
+            operator="<"
+        )
+    ]
+}
+
+
+spec_62w3xg16iivw11et = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            group="Industry",
+        ),
+        SumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Share_of_GDP",
+        ),
+        ScaleOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Number of people in millions",
+            target="ref:n1",
+            factor=1/10
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n1"]),
+            group="Services",
+        ),
+        SumOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"]),
+            field="Share_of_GDP",
+        ),
+        ScaleOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n6"]),
+            field="Number of people in millions",
+            target="ref:n1",
+            factor=1/10
+        ),
+        CompareBoolOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n4", "n7"]),
+            field="Share_of_GDP",
+            operator="==",
+            targetA="ref:n4",
+            targetB="ref:n7"
+        )
+    ]
+}
+
+
+spec_95wcyze391ifhegp = {
+    "ops": [
+        FindExtremumOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Exchange rate in Singapore dollars",
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            field="Exchange rate in Singapore dollars",
+            which="min"
+        ),
+        AverageOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"]),
+            field="Exchange rate in Singapore dollars"
+        )
+    ]
+}
+
+
+spec_9douccar3m9ruah4 = {
+    "ops": [
+        
+    ]
+}
+
+
+spec_9mlpjn6pddrbthj8 = {
+    "ops": [
+        NthOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Number of fatalities",
+            order="asc",
+            n=3
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            field="Year",
+            include=["2011", "2012"]
+        ),
+        SumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Number of fatalities"
+        ),
+        ScaleOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n2"]),
+            field="Number of fatalities",
+            target="ref:n2",
+            factor=1/2
+        ),
+        CompareBoolOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n1", "n4"]),
+            field="Number of fatalities",
+            operator=">",
+            targetA="ref:n1",
+            targetB="ref:n2"
+        )
+    ]
+}
+
+
+spec_1x37jzohqd666qc0 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Don't know/no opinion"
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Percentage of respondents"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="Very unlikely"
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Category",
+            include=["Local community"]
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n3"]),
+            field="Category",
+            include=["Family"]
+        ),
+        DiffOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n4", "n5"]),
+            field="Percentage of respondents",
+            targetA="ref:n4",
+            targetB="ref:n5",
+            signed=True
+        ),
+        FilterOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=[]),
+            group="Somewhat unlikely"
+        ),
+        FilterOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n7"]),
+            field="Category",
+            include=["Local community"]
+        ),
+        FilterOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=["n7"]),
+            field="Category",
+            include=["Family"]
+        ),
+        SumOp(
+            id="n10",
+            meta=OpsMeta(nodeId="n10", inputs=["n8", "n9"]),
+            field="Percentage of respondents"
+        ),
+        CompareBoolOp(
+            id="n11",
+            meta=OpsMeta(nodeId="n11", inputs=["n2", "n10"]),
+            field="Percentage of respondents",
+            operator="==",
+            targetA="ref:n2",
+            targetB="ref:10"
+        )
+    ]
+}
+
+spec_1bv05pu9d8jnidty = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            include=["2020", "2021", "2022", "2023", "2024", "2025"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="National debt in billion US dollars"
+        )
+    ]
+}
+
+spec_2mi8b2r0oalayl6g = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group=["Titleist golf gear", "Footjoy golf wear"]
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Revenue in million US dollars"
+        ),
+        FindExtremumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Revenue in million US dollars",
+            which="min"
+        ),
+        RetrieveValueOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Year",
+            target="2014"
+        )
+    ]
+}
+
+spec_82aqt0k0jnbj3irf = {
+    "ops": [
+        SortOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Number of enterprises",
+            order="asc"
+        ),
+        NthOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            n=5
+        )
+    ]
+}
+
+
+spec_1jatwi94v2d8cr9u = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Digital market"
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Value in billion US dollars"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="Package market"
+        ),
+        SumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Value in billion US dollars"
+        ),DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"]),
+            field="Value in billion US dollars",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
+
+
+spec_2bhsybiilde28j87 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            include=["White", "Hispanic", "Other"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            group="Very interested"
+        ),
+        AverageOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Share_of_Respondents"
+        )
+    ]
+}
+
+
+spec_1bywaj7stsb3060c = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            include=["Conad", "Selex", "MD", "Crai", "Aspiag"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Market shares"
+        )   
+    ]
+}
+
+
+spec_6ah60yba8o7rw0i9 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Yoghurt with additives"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Average_Price_Euros",
+            which="max"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            group="Yoghurt without additives"
+        ),
+        FindExtremumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Average_Price_Euros",
+            which="min"
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"]),
+            field="Average_Price_Euros",
+            targetA="ref:n4",
+            targetB="ref:n2"
+        )
+    ]
+}
+
+
+spec_5p6g89v7l99aes05 = {
+    "ops": [
+        PairDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Average_Payroll_Million_USD",
+            by="Team_Group",
+            groupA="All teams",
+            groupB="Playoff teams"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Average_Payroll_Million_USD",
+            which="max"
+        ),
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Year",
+            target="2015"
+        )
+    ]
+}
+
+
+spec_1ce802l2rdg98d7d = {
+    "ops": [
+        NthOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Share of respondents",
+            order="desc",
+            n=3
+        )
+    ]
+}
+
+spec_1hokbw2gmzar9ye8 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group=["18 years and over", "18 to 39 years"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Group",
+            include=["Men"]
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="60 years and over"
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Group",
+            include=["Women"]
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"]),
+            field="Percentage of adults",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
+
+spec_5wpw8detqynmqv1s = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Female"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Number_of_Victims",
+            which="max"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="Male"
+        ),
+        FindExtremumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Number_of_Victims",
+            which="min"
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"]),
+            field="Number_of_Victims",
+            targetA="ref:n4",
+            targetB="ref:n2"
+        )
+    ]
+}
+
+spec_8e9wp443ff1i6snq = {
+    "ops": [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Immigration rate per thousand inhabitants"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Immigration rate per thousand inhabitants",
+            which="max"
+        ),
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Year",
+            target="2018"
+        )
+    ]
+}
+
+
+spec_2n0g3tsz1rsz6fgr = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            include=["2010", "2011", "2012", "2013", "2014"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of total employment"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            include=["2011", "2012", "2013", "2014", "2015"]
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Share of total employment"
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            include=["2012", "2013", "2014", "2015", "2016"]
+        ),
+        AverageOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"]),
+            field="Share of total employment"
+        ),
+        FilterOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=[]),
+            include=["2016", "2017", "2018", "2019", "2020"]
+        ),
+        AverageOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n7"]),
+            field="Share of total employment"
+        ),
+        FindExtremumOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=["n2", "n4", "n6", "n8"]),
+            field="Share of total employment",
+            which="max"
+        )
+    ]
+}
+
+
+spec_8chfa8n079zpfigi = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="FIFA World Ranking position",
+            operator="between",
+            value=["20", "30"]
+        ),
+        CountOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year"
+        )
+    ]
+}
+
+
+spec_1j7gx35h6i9mpi6j = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Item",
+            include=["Books"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            group="Much more important/A little more important"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Item",
+            include=["Beauty products"]
+        ),
+        DiffOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Share of respondents",
+            targetA="ref:n2",
+            targetB="ref:n3"
+        )
+    ]
+}
+
+
+spec_2yech0pea1xihind = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Several times a day"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Platform",
+            include=["Instagram", "Facebook"]
+        ),
+        SumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Percentage"
+        )
+    ]
+}
+
+
+spec_64ue1v00wj8vg48e = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Should be valid"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year",
+            include=["1996", "1999", "2004", "2005", "2006", "2007", "2008", "2009"]
+        ),
+        AverageOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Share of respondent"
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"]),
+            field="Year",
+            include=["2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017", "2018", "2019", "2020", "2021"]
+        ),
+        AverageOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            field="Share of respondent"
+        ),
+        DiffOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n3", "n5"]),
+            field="Share of respondent",
+            targetA="ref:n3",
+            targetB="ref:n5"
+        )
+    ]
+}
+
+
+spec_1dm30xw1gpjo8ke5 = {
+    "ops": [
+        FindExtremumOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Share of GDP",
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            field="Share of GDP",
+            which="min"
+        ),
+        AverageOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"]),
+            field="Share of GDP"
+        )
+    ]
+}
+
+
+spec_8hiwwys6qkrbtapb = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2002/03", "2003/04", "2004/05", "2005/06", "2006/07", "2007/08", "2008/09", "2009/10"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Crime rate per 1,000 population"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Year",
+            include=["2010/11", "2011/12", "2012/13", "2013/14", "2014/15", "2015/16", "2016/17", "2017/18", "2018/19", "2019/20"]
+        ),
+        AverageOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Crime rate per 1,000 population"
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            field="Crime rate per 1,000 population",
+            targetA="ref:n2",
+            targetB="ref:n4"
+        )
+    ]
+}
+
+
+spec_1mzcynif2s4mm6ps = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Enterprises"
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of respondents"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            group="Provider"
+        ),
+        SumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Share of respondents"
+        ),
+        DiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            field="Share of respondents",
+            targetA="ref:n4",
+            targetB="ref:n2"
+        )
+    ]
+}
+
+
+spec_9u3xwiltv2hlcqq1 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2007", "2008", "2009", "2010", "2011"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year",
+            group="Democratic government"
+        ),
+        LagDiffOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Percentage",
+            signed=True
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"]),
+            group="Strong leader"
+        ),
+        LagDiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"]),
+            field="Percentage",
+            signed=True
+        ),
+        FilterOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=[]),
+            field="Year",
+            include=["2002", "2003", "2004", "2005"]
+        ),
+        FilterOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n6"]),
+            field="Year",
+            group="Democratic government"
+        ),
+        LagDiffOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Percentage",
+            signed=True
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"]),
+            group="Strong leader"
+        ),
+        LagDiffOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"]),
+            field="Percentage",
+            signed=True
+        ),
+        FilterOp(
+            include=["2012", "2013", "2014", "2015"]
+        )
+    ]
+}
+
+
+spec_1hv85ef35tbvldiq = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            operator="<",
+            value=2.0
+        ),
+        CountOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year"
+        )
+    ]
+}
+
+
+spec_au22oa0vjosoagxu = {
+    "ops": [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Life expectancy at birth in years",
+            group="male",
+            order="desc",
+            signed=True
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Life expectancy at birth in years",
+            operator="<",
+            value=0
+        )
+    ]
+}
+
+
+
+spec_albgfrf44bz6134k = {
+    "ops": [
+        AverageOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Inhabitants in millions"
+        ),
+        LagDiffOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            field="Inhabitants in millions"
+        ),
+        CompareBoolOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1", "n2"]),
+            field="Inhabitants in millions",
+            operator="==",
+            targetA="ref:n1",
+            targetB="ref:n2"
+        )
+    ]
+}
+
+
+spec_23bplnbw291p6nil = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Age_group",
+            include=["50 to 59"]
+        ),
+        DiffOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            field="Median_Annual_Pay_GBP",
+            groupA="Male",
+            groupB="Female"
+        )
+    ]
+}
+
+
+spec_aoycx517slbw0ifa = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Revenue in million euros",
+            include=["2015", "2016", "2017", "2018"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=[]),
+            group="Entertainment division"
+        ),
+        SumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Revenue in million euros"
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"]),
+            group="Enterprise division"
+        ),
+        SumOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"]),
+            field="Revenue in million euros"
+        ),
+        FilterOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n1"]),
+            group="Healthcare division"
+        ),
+        SumOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n6"]),
+            field="Revenue in million euros"
+        ),
+        FindExtremumOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n3", "n5", "n7"]),
+            field="Revenue in million euros",
+            which="max"
+        )
+    ]
+}
+
+
+spec_aqowly2mmavof3f1 = {
+    "ops": [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Unemployment rate"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year",
+            include=["1992", "2000"]
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1"]),
+            field="Year",
+            include=["2010", "2019"]
+        )
+    ]
+}
+
+
+spec_23zc8kuhnpespj98 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Boys"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share_of_Respondents",
+            which="max"
+        ),
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Genre",
+            target="Comedy"
+        )
+    ]
+}
+
+
+spec_1hm06wtar7gh92c8 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2020"]
+        ),
+        ScaleOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of population older than 65 years old",
+            target="ref:n1",
+            factor=100000
+        )
+    ]
+}
+
+
+
+spec_amn6abwhwmc7ksaz = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Quarter/Year",
+            include=["Q1 '16", "Q2 '16", "Q3 '16",  "Q4 '16"]
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Price in US dollars per peak watt",
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=[]),
+            field="Quarter/Year",
+            include=["Q1 '17", "Q2 '17", "Q3 '17", "Q4 '17"]
+        ),
+        SumOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Price in US dollars per peak watt",
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            field="Quarter/Year",
+            include=["Q1 '18", "Q2 '18", "Q3 '18", "Q4 '18"]
+        ),
+        SumOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"]),
+            field="Price in US dollars per peak watt",
+        ),
+        FilterOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=[]),
+            field="Quarter/Year",
+            include=["Q1 '19", "Q2 '19", "Q3 '19", "Q4 '19"]
+        ),
+        SumOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n7"]),
+            field="Price in US dollars per peak watt",
+        ),
+        FilterOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=[]),
+            field="Quarter/Year",
+            include=["Q1 '20", "Q2 '20", "Q3 '20"]
+        ),
+        SumOp(
+            id="n10",
+            meta=OpsMeta(nodeId="n10", inputs=["n9"]),
+            field="Price in US dollars per peak watt",
+        ),
+        FindExtremumOp(
+            id="n11",
+            meta=OpsMeta(nodeId="n11", inputs=["n2", "n4", "n6", "n8", "n10"]),
+            field="Price in US dollars per peak watt",
+            which="max"
+        )
+    ]
+}
+
+
+spec_221xoyhy3yziwabm = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="2014"
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Satisfaction_Level",
+            include=["Very satisfied", "Somewhat satisfied"]
+        ),
+        SumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Share_of_Respondents"
+        ),
+        FilterOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n1"]),
+            include=["Somewhat dissatisfied", "Very dissatisfied"]
+        ),
+        SumOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=["n4"]),
+            field="Share_of_Respondents"
+        ),
+        CompareOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n3", "n5"]),
+            field="Share_of_Respondents",
+            targetA="ref:n3",
+            targetB="ref:n5"
+        )
+    ]
+}
+
+
+
+spec_25n4mzhv6y1p36dl = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Spend more"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share_of_Respondents"
+        ),
+        RetrieveValueOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Sector",
+            target="IT & computer software"
+        )
+    ]
+}
+
+
+spec_ay58pwlf97q0osw6 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group="Matchday"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Revenue in million euros",
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n1"]),
+            field="Revenue in million euros",
+            which="min"
+        ),
+        DiffOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n2", "n3"]),
+            field="Revenue in million euros",
+            targetA="ref:n2",
+            targetB="ref:n3"
+        ),
+        FilterOp(
+            id="n5",
+            meta=OpsMeta(nodeId="n5", inputs=[]),
+            group="Matchday"
+        ),
+        FindExtremumOp(
+            id="n6",
+            meta=OpsMeta(nodeId="n6", inputs=["n5"]),
+            field="Revenue in million euros",
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n7",
+            meta=OpsMeta(nodeId="n7", inputs=["n5"]),
+            field="Revenue in million euros",
+            which="min"
+        ),
+        DiffOp(
+            id="n8",
+            meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"]),
+            field="Revenue in million euros",
+            targetA="ref:n6",
+            targetB="ref:n7"
+        ),
+        FilterOp(
+            id="n9",
+            meta=OpsMeta(nodeId="n9", inputs=[]),
+            group="Matchday"
+        ),
+        FindExtremumOp(
+            id="n10",
+            meta=OpsMeta(nodeId="n10", inputs=["n9"]),
+            field="Revenue in million euros",
+            which="max"
+        ),
+        FindExtremumOp(
+            id="n11",
+            meta=OpsMeta(nodeId="n11", inputs=["n9"]),
+            field="Revenue in million euros",
+            which="min"
+        ),
+        DiffOp(
+            id="n12",
+            meta=OpsMeta(nodeId="n12", inputs=["n10", "n11"]),
+            field="Revenue in million euros",
+            targetA="ref:n6",
+            targetB="ref:n7"
+        ),
+        FindExtremumOp(
+            id="n13",
+            meta=OpsMeta(nodeId="n13", inputs=["n4", "n8", "n12"]),
+            field="Revenue in million euros",
+            which="max"
+        )
+    ]
+}
+
+
+spec_bhaqrpqx0hwtcol5 = {
+    "ops": [
+        PairDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Life expectancy in years",
+            by="Region",
+            groupA="Northwest Territories",
+            groupB="Canada"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Life expectancy in years",
+            which="max"
+        ),
+        
+    ]
+}
+
+
+spec_b1jrtiwi2x01zdtw = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2005"]
+        ),
+        PairDiffOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of respondents",
+            by="Engagement Status",
+            groupA="Engaged",
+            groupB="Not engaged"
+        )
+    ]
+}
+
+
+
+spec_bfi0ia7zx8pjb5g8 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            group=["Hardlines and leisure goods", "Diversified"]
+        ),
+        SumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Share of retail revenue from foreign operations"
+        ),
+        FilterOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            field="Share of retail revenue from foreign operations",
+            operator=">",
+            value=60
+        ),
+        CountOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            field="Year"
+        )
+    ]
+}
+
+
+spec_ahxo354yj7g4m6h1 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Year",
+            include=["2000", "2010"]
+        ),
+        AverageOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Percentage of GDP"
+        ),
+        ScaleOp(
+            id="n3",
+            meta=OpsMeta(nodeId="n3", inputs=["n2"]),
+            target="ref:n2",
+            factor=1/10
+        ),
+        ScaleOp(
+            id="n4",
+            meta=OpsMeta(nodeId="n4", inputs=["n3"]),
+            target="ref:n3",
+            factor=8.1
+        )
+    ]
+}
+
+
+spec_apsxmes1emdu9vtk = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Inhabitants in millions",
+            include=["2018"]
+        ),
+        FilterOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            group="80 years and older"
+        )
+    ]
+}
+
+
+spec_1hp11sl0mo4ohtpo = {
+    "ops": [
+        LagDiffOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Average ticket price in US dollars"
+        ),
+        FindExtremumOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Average ticket price in US dollars",
+            which="max"
+        )
+    ]
+}
+
+
+spec_1it2ia9kmdihxan8 = {
+    "ops": [
+        FilterOp(
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[]),
+            field="Number of incidents",
+            operator="<",
+            value=50
+        ),
+        CountOp(
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"]),
+            field="Year"
+        )
     ]
 }
 
 
 spec_0asi8pbitsbxnodv = {
     "ops": [
-
+        
     ]
 }
 
 
 spec_0cnwglgcwmsbhp4g = {
     "ops": [
-
+        
     ]
 }
+
 
 
 spec_0cy2ufyjsinsswpm = {
@@ -7466,61 +9290,6 @@ spec_0ivzc37gi49isy9n = {
 }
 
 
-spec_1bv05pu9d8jnidty = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1bywaj7stsb3060c = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1ce802l2rdg98d7d = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1dm30xw1gpjo8ke5 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1e56qqj7moat9gqa = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1epzpacytv3wx2i6 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1esx2fbduhqn7knk = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1fngt6cb1d60a2ow = {
-    "ops": [
-
-    ]
-}
-
 
 spec_1g17ep9vho38jvcz = {
     "ops": [
@@ -7550,56 +9319,7 @@ spec_1hlsoeyqlr1r1n41 = {
 }
 
 
-spec_1hm06wtar7gh92c8 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1hokbw2gmzar9ye8 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1hp11sl0mo4ohtpo = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1hv85ef35tbvldiq = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1it2ia9kmdihxan8 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1j7gx35h6i9mpi6j = {
-    "ops": [
-
-    ]
-}
-
-
 spec_1j86ensex8nyvdyk = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1jatwi94v2d8cr9u = {
     "ops": [
 
     ]
@@ -7634,12 +9354,6 @@ spec_1lxkhjyirlc8ghzj = {
 }
 
 
-spec_1mzcynif2s4mm6ps = {
-    "ops": [
-
-    ]
-}
-
 
 spec_1nhvdb1l9awjyxs1 = {
     "ops": [
@@ -7647,33 +9361,6 @@ spec_1nhvdb1l9awjyxs1 = {
     ]
 }
 
-
-spec_1p6uue3hxdxit3ey = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1qm2z3ooawf339jz = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1suppecte0dm69gm = {
-    "ops": [
-
-    ]
-}
-
-
-spec_1x37jzohqd666qc0 = {
-    "ops": [
-
-    ]
-}
 
 
 spec_1xj7x49epprmpod7 = {
@@ -7704,34 +9391,6 @@ spec_2203wq7kgv5ha9fi = {
 }
 
 
-spec_221xoyhy3yziwabm = {
-    "ops": [
-
-    ]
-}
-
-
-spec_23bplnbw291p6nil = {
-    "ops": [
-
-    ]
-}
-
-
-spec_23zc8kuhnpespj98 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_25n4mzhv6y1p36dl = {
-    "ops": [
-
-    ]
-}
-
-
 spec_263367gingx3k5hu = {
     "ops": [
 
@@ -7753,13 +9412,6 @@ spec_2a7luy1tzrplr2as = {
 }
 
 
-spec_2bhsybiilde28j87 = {
-    "ops": [
-
-    ]
-}
-
-
 spec_2ecy6apyrdfpoqbo = {
     "ops": [
 
@@ -7768,20 +9420,6 @@ spec_2ecy6apyrdfpoqbo = {
 
 
 spec_2jwbvymb2n0i24la = {
-    "ops": [
-
-    ]
-}
-
-
-spec_2mi8b2r0oalayl6g = {
-    "ops": [
-
-    ]
-}
-
-
-spec_2n0g3tsz1rsz6fgr = {
     "ops": [
 
     ]
@@ -7829,12 +9467,6 @@ spec_2wg6j8htdy5xge6g = {
     ]
 }
 
-
-spec_2yech0pea1xihind = {
-    "ops": [
-
-    ]
-}
 
 
 spec_31d6673lje5rb1nw = {
@@ -7886,20 +9518,6 @@ spec_50pei8jwlb2g5h1q = {
 }
 
 
-spec_50y71e5i2n28gkbx = {
-    "ops": [
-
-    ]
-}
-
-
-spec_54gh54f24irr63pb = {
-    "ops": [
-
-    ]
-}
-
-
 spec_56010lp5kjl1p4by = {
     "ops": [
 
@@ -7921,12 +9539,6 @@ spec_5ldzsatw0rpbpxz3 = {
 }
 
 
-spec_5p6g89v7l99aes05 = {
-    "ops": [
-
-    ]
-}
-
 
 spec_5rjyoxyictwaceaz = {
     "ops": [
@@ -7934,33 +9546,6 @@ spec_5rjyoxyictwaceaz = {
     ]
 }
 
-
-spec_5wpw8detqynmqv1s = {
-    "ops": [
-
-    ]
-}
-
-
-spec_62w3xg16iivw11et = {
-    "ops": [
-
-    ]
-}
-
-
-spec_64ue1v00wj8vg48e = {
-    "ops": [
-
-    ]
-}
-
-
-spec_6ah60yba8o7rw0i9 = {
-    "ops": [
-
-    ]
-}
 
 
 spec_6i84fq1ot2j0njaf = {
@@ -7977,35 +9562,9 @@ spec_6macy6l6h00wvng7 = {
 }
 
 
-spec_6p4fnscalopvysnn = {
-    "ops": [
-
-    ]
-}
-
-
-spec_6rqevjp16hadlyly = {
-    "ops": [
-
-    ]
-}
-
-
-spec_6rvtt4egfl5nmyue = {
-    "ops": [
-
-    ]
-}
 
 
 spec_71v97x2ifsxw6u8p = {
-    "ops": [
-
-    ]
-}
-
-
-spec_75yz7pci1w1dif3g = {
     "ops": [
 
     ]
@@ -8018,12 +9577,6 @@ spec_77xb5ug5lhfmkb74 = {
     ]
 }
 
-
-spec_7extlfw651gqc5fk = {
-    "ops": [
-
-    ]
-}
 
 
 spec_7iy5s09teyeaybzy = {
@@ -8041,13 +9594,6 @@ spec_7mw5410egrxfi2oy = {
 
 
 spec_7rsc3a0rw1rlh7pk = {
-    "ops": [
-
-    ]
-}
-
-
-spec_82aqt0k0jnbj3irf = {
     "ops": [
 
     ]
@@ -8075,28 +9621,7 @@ spec_88sup9tkwx0lwkgw = {
 }
 
 
-spec_8chfa8n079zpfigi = {
-    "ops": [
-
-    ]
-}
-
-
-spec_8e9wp443ff1i6snq = {
-    "ops": [
-
-    ]
-}
-
-
 spec_8glm4qrzc2cbbq1e = {
-    "ops": [
-
-    ]
-}
-
-
-spec_8hiwwys6qkrbtapb = {
     "ops": [
 
     ]
@@ -8131,26 +9656,6 @@ spec_90tonvacpe7zniv9 = {
 }
 
 
-spec_95wcyze391ifhegp = {
-    "ops": [
-
-    ]
-}
-
-
-spec_95yhyqjyeu4fohbj = {
-    "ops": [
-
-    ]
-}
-
-
-spec_9douccar3m9ruah4 = {
-    "ops": [
-
-    ]
-}
-
 
 spec_9g5a38vcep03acdu = {
     "ops": [
@@ -8173,12 +9678,6 @@ spec_9hgt5h53p4ic33md = {
 }
 
 
-spec_9mlpjn6pddrbthj8 = {
-    "ops": [
-
-    ]
-}
-
 
 spec_9r3kyy2jo2o66msh = {
     "ops": [
@@ -8195,13 +9694,6 @@ spec_9r7co7yl1osn3zg4 = {
 
 
 spec_9sdl1j9l1fbhwq09 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_9u3xwiltv2hlcqq1 = {
     "ops": [
 
     ]
@@ -8236,55 +9728,6 @@ spec_ae2xp7bacbbs0kmx = {
 }
 
 
-spec_ahxo354yj7g4m6h1 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_albgfrf44bz6134k = {
-    "ops": [
-
-    ]
-}
-
-
-spec_amn6abwhwmc7ksaz = {
-    "ops": [
-
-    ]
-}
-
-
-spec_aoycx517slbw0ifa = {
-    "ops": [
-
-    ]
-}
-
-
-spec_apsxmes1emdu9vtk = {
-    "ops": [
-
-    ]
-}
-
-
-spec_aqowly2mmavof3f1 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_au22oa0vjosoagxu = {
-    "ops": [
-
-    ]
-}
-
-
 spec_avwb8xstxx1lmfpk = {
     "ops": [
 
@@ -8293,20 +9736,6 @@ spec_avwb8xstxx1lmfpk = {
 
 
 spec_awg12vb36ndo75tq = {
-    "ops": [
-
-    ]
-}
-
-
-spec_ay58pwlf97q0osw6 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_b1jrtiwi2x01zdtw = {
     "ops": [
 
     ]
@@ -8335,20 +9764,6 @@ spec_b9vfcqsqid200mah = {
 
 
 spec_bd95lx2pntlr7ati = {
-    "ops": [
-
-    ]
-}
-
-
-spec_bfi0ia7zx8pjb5g8 = {
-    "ops": [
-
-    ]
-}
-
-
-spec_bhaqrpqx0hwtcol5 = {
     "ops": [
 
     ]
