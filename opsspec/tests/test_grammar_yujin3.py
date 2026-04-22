@@ -463,7 +463,7 @@ spec_2yech0pea1xihind = {
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
             field="Platform",
-            include=["META"]
+            include=["Facebook", "Instagram"]
         ),
         FilterOp(
             id="n2",
