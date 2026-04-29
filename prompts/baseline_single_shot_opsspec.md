@@ -147,8 +147,8 @@ Specific operation reminders:
 - For op="add": MUST include targetA and targetB (each scalar ref "ref:nX" or numeric literal).
 - For op="diff": MUST include targetA and targetB (both must be scalar refs "ref:nX").
   meta.inputs MUST contain exactly 2 nodeIds matching the referenced nodes.
-- For op="compare": MUST include targetA, targetB (scalar refs "ref:nX"), and which ("min" or "max").
-  meta.inputs MUST contain exactly 2 nodeIds.
+- For op="diffByValue": MUST include either `value` (numeric literal) or `targetValue` ("ref:nX")
+  — exactly one of the two — to define the scalar reference V every chart row is compared against.
 - For op="nth": MUST include n (integer or list of integers).
 - For op="setOp": MUST include fn ("intersection" or "union"). meta.inputs must have at least two nodeIds.
 - For op="pairDiff": MUST include by, groupA, and groupB.
@@ -172,7 +172,7 @@ The operations in the LAST sentence of the explanation must collectively
 produce the final answer to the QUESTION.
 1. Re-read the QUESTION to understand the complete structure of the final answer.
 2. If the question asks to compare two derived values (e.g., "how big was X compared to Y?"),
-   generate ALL ops needed: compute X, compute Y, then compare/diff X and Y.
+   generate ALL ops needed: compute X, compute Y, then diff X and Y.
 3. If the explanation uses vague or singular language in the last sentence
    (e.g., "get the difference", "compare the values"), expand it to the full set of
    ops implied by the question — do not stop at one op if the question requires more.
@@ -184,7 +184,7 @@ A single explanation sentence may require MULTIPLE operations.
   question: "in which years did Thailand's revenue exceed Philippines?"
   → This sentence requires TWO ops:
     1) filter(field="Country", include=["Thailand", "Philippines"])
-    2) pairDiff(...) — implicit compare to prepare for later question answering
+    2) pairDiff(...) — implicit pairwise comparison to prepare for later question answering
   → The question context reveals that pairDiff is needed.
 
 PAIRDIFF GROUPORDER SEMANTICS:
@@ -198,12 +198,13 @@ For pairDiff(groupA, groupB):
   → groupB="Philippines" (the baseline it is compared against)
 
 COMPREHENSIVE INPUTS GATHERING (MUST APPLY):
-For comparison/ranking operations (findExtremum, compare, diff, pairDiff):
+For comparison/ranking operations (findExtremum, diff, pairDiff, diffByValue):
 - meta.inputs MUST include ALL nodes that contribute to the semantic meaning of the operation.
 - findExtremum: If multiple candidate nodes exist (from different groups/times),
   inputs MUST contain ALL of them.
-- compare/diff: MUST include exactly 2 nodes being compared.
+- diff: MUST include exactly 2 nodes being compared.
 - pairDiff: Include all relevant input nodes for the pair comparison.
+- diffByValue: When the reference V is a scalar from a prior node, include that node in inputs and use targetValue="ref:nX".
 
 QUESTION-DRIVEN INPUT SELECTION:
 When multiple prior operations could serve as inputs or scalar refs, resolve ambiguity

@@ -76,8 +76,8 @@ Critical rules:
    - For op="add", you MUST include targetA and targetB (each should be scalar ref like "ref:nX" or numeric literal).
    - For op="diff": MUST include targetA and targetB (both must be scalar refs "ref:nX").
      inputs MUST contain exactly 2 nodeIds matching the referenced nodes.
-   - For op="compare": MUST include targetA, targetB (scalar refs "ref:nX"), and which ("min" or "max").
-     inputs MUST contain exactly 2 nodeIds.
+   - For op="diffByValue": MUST include either `value` (numeric literal) or `targetValue` ("ref:nX")
+     — exactly one of the two — defining the scalar reference V every chart row is compared against.
    - For op="nth", you MUST include n (integer or list of integers). (n is required.)
    - For op="setOp", you MUST include fn ("intersection" or "union") AND inputs with at least two nodeIds.
    - For op="pairDiff", you MUST include by, groupA, and groupB.
@@ -87,7 +87,7 @@ Critical rules:
    - Decide whether this step's output is scalar or row-list and ensure it is needed by later steps.
    - If a scalar is needed from prior nodes, use "ref:nX" explicitly.
    - Avoid producing disconnected or unused branches.
-   - The selected task already represents one meaningful reasoning chunk. Do NOT add compensating ops for nearby narrative-only text.
+   - The selected task already represents one operation-bearing reasoning chunk. Do not add compensating ops for nearby narrative-only text.
    - Keep op choices semantically aligned with intent:
      - row aggregation: sum/average/count
      - scalar arithmetic: add/scale/diff (scalar-ref mode)
@@ -104,7 +104,7 @@ Critical rules:
    derive X from the QUESTION before selecting the ref.
 
 10) COMPREHENSIVE INPUTS GATHERING - 필수 규칙 (MUST APPLY):
-   For comparison/ranking operations (findExtremum, compare, diff, pairDiff):
+   For comparison/ranking operations (findExtremum, diff, pairDiff, diffByValue):
 
    CRITICAL RULE: inputs MUST include ALL available nodes that contribute
    to the semantic meaning of the current task.
@@ -120,7 +120,9 @@ Critical rules:
        → Rationale: "max between two values" requires BOTH values to compare
        → If only n1 is included, the max is not determined between the two candidates
 
-   - compare/diff: MUST include exactly 2 nodes being compared
+   - diff: MUST include exactly 2 nodes being compared
+
+   - diffByValue: When the reference V comes from a prior node (targetValue="ref:nX"), include that node in inputs
 
    - pairDiff: Include all relevant input nodes for the pair comparison
 
@@ -153,7 +155,7 @@ Current task (fixed by pipeline):
 $current_task_json
 
 Important note:
-- current_task.sentenceIndex is a legacy field name. Treat it as the 1-based order of the current meaningful reasoning chunk.
+- current_task.sentenceIndex is a legacy public-schema field name. Treat it as the 1-based order of the current meaningful reasoning chunk, not sentence order.
 
 Remaining tasks S(O):
 $remaining_tasks_json

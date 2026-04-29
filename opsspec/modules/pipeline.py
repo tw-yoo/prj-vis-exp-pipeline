@@ -355,6 +355,19 @@ def _group_name(sentence_index: int) -> str:
     return "ops" if int(sentence_index) == 1 else f"ops{int(sentence_index)}"
 
 
+def _build_text_chunks_from_tasks(tasks: List[OpTask]) -> Dict[str, str]:
+    chunks: Dict[str, List[str]] = {}
+    for task in sorted(list(tasks or []), key=lambda t: (int(t.sentenceIndex), _task_sort_key(t))):
+        group_name = _group_name(task.sentenceIndex)
+        mention = " ".join(str(task.mention or "").split())
+        if not mention:
+            continue
+        group_mentions = chunks.setdefault(group_name, [])
+        if mention not in group_mentions:
+            group_mentions.append(mention)
+    return {group_name: " ".join(mentions).strip() for group_name, mentions in chunks.items() if mentions}
+
+
 def _task_sort_key(task: OpTask) -> int:
     raw = str(task.taskId)
     try:
@@ -401,6 +414,7 @@ def _llm_debug_config(llm: StructuredLLMClient) -> Dict[str, Any]:
     # Keep stable and minimal. (Do not add secrets.)
     return {
         "backend": llm.backend,
+        "backend_override": llm.backend_override or None,
         "ollama_model": llm.ollama_model,
         "ollama_base_url": llm.ollama_base_url,
         "instructor_mode": llm.instructor_mode,
@@ -482,6 +496,9 @@ class OpsSpecPipeline:
             ollama_base_url=ollama_base_url,
             ollama_api_key=ollama_api_key,
         )
+        self.ollama_model = ollama_model
+        self.ollama_base_url = ollama_base_url
+        self.ollama_api_key = ollama_api_key
         self.prompts_dir = prompts_dir
         self.inventory_prompt: Optional[str] = None
         self.step_compose_prompt: Optional[str] = None
@@ -502,6 +519,27 @@ class OpsSpecPipeline:
         self.step_compose_prompt = _load_prompt(self.step_compose_prompt_path)
         self.shared_rules_prompt = _load_prompt(self.shared_rules_prompt_path) if self.shared_rules_prompt_path.exists() else ""
 
+    def _llm_for_request(self, llm_backend: Optional[str]) -> StructuredLLMClient:
+        backend = (llm_backend or "").strip().lower()
+        if not backend:
+            return self.llm
+        if backend not in {"openai", "ollama"}:
+            raise ValueError('llm_backend must be one of: "openai", "ollama".')
+        request_llm = StructuredLLMClient(
+            ollama_model=self.ollama_model,
+            ollama_base_url=self.ollama_base_url,
+            ollama_api_key=self.ollama_api_key,
+            backend_override=backend,
+        )
+        request_llm.load()
+        return request_llm
+
+    def model_name_for_request(self, llm_backend: Optional[str]) -> str:
+        request_llm = self._llm_for_request(llm_backend)
+        if request_llm.backend == "openai_http":
+            return os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
+        return request_llm.ollama_model
+
     def generate(
         self,
         *,
@@ -511,8 +549,10 @@ class OpsSpecPipeline:
         data_rows: List[Dict[str, Any]],
         request_id: str,
         debug: bool,
+        llm_backend: Optional[str] = None,
     ) -> GenerateOpsSpecResponse:
         self.load()
+        request_llm = self._llm_for_request(llm_backend)
         assert self.inventory_prompt is not None
         assert self.step_compose_prompt is not None
         assert self.shared_rules_prompt is not None
@@ -608,7 +648,7 @@ class OpsSpecPipeline:
         for attempt in range(1, max_retries + 1):
             try:
                 inventory_payload = run_inventory_module(
-                    llm=self.llm,
+                    llm=request_llm,
                     prompt_template=self.inventory_prompt,
                     prompt_path=str(self.inventory_prompt_path),
                     shared_rules=self.shared_rules_prompt,
@@ -655,7 +695,7 @@ class OpsSpecPipeline:
                     debug_payloads["inventory"] = {
                         **(inventory_payload or {}),
                         "retry_notes": inventory_retry_notes,
-                        "llm": _llm_debug_config(self.llm),
+                        "llm": _llm_debug_config(request_llm),
                         "ops_contract": ops_contract,
                     }
                     _attach_trace_md()
@@ -683,7 +723,7 @@ class OpsSpecPipeline:
             "attempt": int(inventory_payload.get("_attempt") or 1),
             "validation_feedback_in": list(inventory_payload.get("_validation_feedback_in") or []),
             "retry_notes": inventory_retry_notes,
-            "llm": _llm_debug_config(self.llm),
+            "llm": _llm_debug_config(request_llm),
             # LLM raw output (Pydantic 검증 전 원본 JSON string) + latency.
             "raw_llm_response": inventory_payload.get("_raw_llm_response"),
             "llm_elapsed_ms": inventory_payload.get("_llm_elapsed_ms"),
@@ -778,7 +818,7 @@ class OpsSpecPipeline:
             for attempt in range(1, max_retries + 1):
                 try:
                     compose_payload = run_step_compose_module(
-                        llm=self.llm,
+                        llm=request_llm,
                         prompt_template=self.step_compose_prompt,
                         prompt_path=str(self.step_compose_prompt_path),
                         shared_rules=self.shared_rules_prompt,
@@ -1120,6 +1160,7 @@ class OpsSpecPipeline:
         result = GenerateOpsSpecResponse(
             ops_spec=scheduled_groups,
             chart_context=chart_context,
+            text_chunks=_build_text_chunks_from_tasks(tasks),
             warnings=all_warnings,
             trace=trace,
         )

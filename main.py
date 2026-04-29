@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import csv
 from datetime import datetime
 import json
 import logging
@@ -6,6 +7,7 @@ import os
 import time
 from pathlib import Path
 import traceback
+from threading import Lock
 import uuid
 from typing import Any, Dict, List
 
@@ -66,10 +68,145 @@ from opsspec.core.utils import prune_nulls
 
 logger = logging.getLogger(__name__)
 trace_logger = logging.getLogger("pipeline_trace")
+_GRAMMAR_RESULT_FIELDS = ["chart_id", "model", "question", "explanation", "vega_lite_spec", "spec"]
+_grammar_result_lock = Lock()
 
 
 def _error_reports_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "data" / "expert_prompt_reports"
+
+
+def _grammar_result_csv_path() -> Path:
+    return Path(__file__).resolve().parent / "grammar_result.csv"
+
+
+def _chart_id_from_vega_spec(vega_lite_spec: Dict[str, Any]) -> str:
+    data = vega_lite_spec.get("data") if isinstance(vega_lite_spec, dict) else None
+    url = data.get("url") if isinstance(data, dict) else None
+    if not isinstance(url, str) or not url.strip():
+        return ""
+    return Path(url.strip()).stem
+
+
+def _stable_json(value: Any) -> str:
+    return json.dumps(prune_nulls(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _read_cached_grammar_spec(
+    *,
+    chart_id: str,
+    model: str,
+    question: str,
+    explanation: str,
+    vega_lite_spec: Dict[str, Any],
+) -> Dict[str, Any] | None:
+    path = _grammar_result_csv_path()
+    if not path.exists():
+        return None
+
+    vega_lite_spec_text = _stable_json(vega_lite_spec)
+    with _grammar_result_lock:
+        try:
+            with path.open("r", encoding="utf-8", newline="") as fp:
+                reader = csv.DictReader(fp)
+                for row in reader:
+                    cached_vega_lite_spec = row.get("vega_lite_spec")
+                    if cached_vega_lite_spec is not None and cached_vega_lite_spec != vega_lite_spec_text:
+                        continue
+                    if (
+                        row.get("chart_id") == chart_id
+                        and row.get("model") == model
+                        and row.get("question") == question
+                        and row.get("explanation") == explanation
+                    ):
+                        spec_text = row.get("spec") or ""
+                        if not spec_text.strip():
+                            continue
+                        spec = json.loads(spec_text)
+                        if isinstance(spec, dict):
+                            return spec
+        except Exception as exc:
+            logger.warning("Failed to read grammar_result cache at %s: %s", path, exc)
+    return None
+
+
+def _append_grammar_result(
+    *,
+    chart_id: str,
+    model: str,
+    question: str,
+    explanation: str,
+    vega_lite_spec: Dict[str, Any],
+    spec: Dict[str, Any],
+) -> None:
+    path = _grammar_result_csv_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    row = {
+        "chart_id": chart_id,
+        "model": model,
+        "question": question,
+        "explanation": explanation,
+        "vega_lite_spec": _stable_json(vega_lite_spec),
+        "spec": _stable_json(spec),
+    }
+
+    with _grammar_result_lock:
+        write_header = not path.exists() or path.stat().st_size == 0
+        with path.open("a", encoding="utf-8", newline="") as fp:
+            writer = csv.DictWriter(fp, fieldnames=_GRAMMAR_RESULT_FIELDS)
+            if write_header:
+                writer.writeheader()
+            writer.writerow(row)
+
+
+def _grammar_cache_ops_groups(spec: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        key: value
+        for key, value in (spec or {}).items()
+        if isinstance(key, str) and (key == "ops" or (key.startswith("ops") and key[3:].isdigit()))
+    }
+
+
+def _grammar_cache_text_chunks(spec: Dict[str, Any]) -> Dict[str, str]:
+    raw = (spec or {}).get("text_chunks")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(key): str(value) for key, value in raw.items() if isinstance(key, str) and isinstance(value, str)}
+
+
+def _build_generate_grammar_response_payload(
+    *,
+    ops_spec: Dict[str, List[Any]],
+    text_chunks: Dict[str, str] | None = None,
+) -> Dict[str, Any]:
+    # /generate_grammar는 grammar(=OpsSpec) + 문장 단위 텍스트만 반환한다.
+    # draw_plan / execution_plan / visual_execution_plan 컴파일은 /compile_ops_plan 책임.
+    groups_dump = {
+        group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
+        for group_name, ops in ops_spec.items()
+    }
+
+    response_payload: Dict[str, Any] = dict(groups_dump)
+    response_payload["text_chunks"] = text_chunks or {}
+    return prune_nulls(response_payload)
+
+
+def _parse_cached_ops_spec(
+    *,
+    spec: Dict[str, Any],
+    vega_lite_spec: Dict[str, Any],
+    data_rows: List[Dict[str, Any]],
+) -> tuple[Dict[str, List[Any]], Any, List[str]]:
+    chart_context, context_warnings, _rows_preview = build_chart_context(vega_lite_spec, data_rows)
+    groups, parse_warnings, errors = validate_and_parse_ops_spec_groups(
+        _grammar_cache_ops_groups(spec),
+        chart_context,
+    )
+    errors.extend(validate_refs_against_node_ids(groups))
+    if errors:
+        raise ValueError("Cached grammar spec validation failed:\n- " + "\n- ".join(errors))
+    scheduled_groups = schedule_ops_spec(groups)
+    return scheduled_groups, chart_context, list(context_warnings) + parse_warnings
 
 
 def _safe_line(value: str, *, max_len: int = 500) -> str:
@@ -168,8 +305,9 @@ def configure_trace_logger(log_path: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
-    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    # ollama_model = os.getenv("OLLAMA_MODEL", "deepseek-r1:14b")
+    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.131:11434")
     ollama_api_key = os.getenv("OLLAMA_API_KEY", "ollama")
     trace_log_path = os.getenv("TRACE_LOG_PATH", "logs/pipeline_trace.log")
 
@@ -274,6 +412,7 @@ async def generate_grammar_request_body(request: GenerateGrammarRequestBodyReque
         vega_lite_spec=vega_lite_spec,
         data_rows=data_rows,
         debug=bool(request.debug),
+        llm_backend=request.llm_backend,
     )
 
 
@@ -384,6 +523,37 @@ async def generate_grammar(request: GenerateGrammarRequest):
     )
 
     try:
+        chart_id = _chart_id_from_vega_spec(request.vega_lite_spec)
+        model_name = pipeline.model_name_for_request(request.llm_backend)
+        cached_spec = _read_cached_grammar_spec(
+            chart_id=chart_id,
+            model=model_name,
+            question=request.question,
+            explanation=request.explanation,
+            vega_lite_spec=request.vega_lite_spec,
+        )
+        if cached_spec is not None:
+            cached_groups, cached_chart_context, cache_warnings = _parse_cached_ops_spec(
+                spec=cached_spec,
+                vega_lite_spec=request.vega_lite_spec,
+                data_rows=request.data_rows,
+            )
+            elapsed_ms = (time.perf_counter() - started_at) * 1000
+            logger.info(
+                "[/generate_grammar] cache hit | request_id=%s chart_id=%s model=%s groups=%d warnings=%d elapsed_ms=%.1f",
+                request_id,
+                chart_id,
+                model_name,
+                len(cached_groups),
+                len(cache_warnings),
+                elapsed_ms,
+            )
+            trace_logger.info("[request:%s] grammar_cache_hit | elapsed_ms=%.1f", request_id, elapsed_ms)
+            return _build_generate_grammar_response_payload(
+                ops_spec=cached_groups,
+                text_chunks=_grammar_cache_text_chunks(cached_spec),
+            )
+
         result = pipeline.generate(
             question=request.question,
             explanation=request.explanation,
@@ -391,6 +561,7 @@ async def generate_grammar(request: GenerateGrammarRequest):
             data_rows=request.data_rows,
             request_id=request_id,
             debug=bool(request.debug),
+            llm_backend=request.llm_backend,
         )
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.info(
@@ -406,25 +577,19 @@ async def generate_grammar(request: GenerateGrammarRequest):
             group_name: [op.model_dump(by_alias=True, exclude_none=True) for op in ops]
             for group_name, ops in result.ops_spec.items()
         }
-        draw_plan_dump = validate_draw_groups_payload(
-            build_draw_ops_spec(
-                ops_spec=result.ops_spec,
-                chart_context=result.chart_context,
-                data_rows=request.data_rows,
-                vega_lite_spec=request.vega_lite_spec,
-            )
-        )
-        execution_plan_dump = build_sentence_execution_plan(
+        response_payload = _build_generate_grammar_response_payload(
             ops_spec=result.ops_spec,
-            draw_plan_groups=draw_plan_dump,
+            text_chunks=result.text_chunks,
         )
-        visual_execution_plan_dump = build_visual_execution_plan(ops_spec=result.ops_spec)
-
-        response_payload: Dict[str, Any] = dict(groups_dump)
-        response_payload["draw_plan"] = draw_plan_dump
-        response_payload["execution_plan"] = execution_plan_dump
-        response_payload["visual_execution_plan"] = visual_execution_plan_dump
-        return prune_nulls(response_payload)
+        _append_grammar_result(
+            chart_id=chart_id,
+            model=model_name,
+            question=request.question,
+            explanation=request.explanation,
+            vega_lite_spec=request.vega_lite_spec,
+            spec={**groups_dump, "text_chunks": result.text_chunks},
+        )
+        return response_payload
     except RuntimeError as exc:
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.error(

@@ -317,13 +317,8 @@ def _classify_node_result_kind(
     if op_name in {"average", "sum", "count"}:
         return "source-aggregate" if not inputs else "synthetic-result"
 
-    if op_name in {"diff", "add", "scale", "compareBool", "pairDiff", "lagDiff"}:
+    if op_name in {"diff", "diffByValue", "add", "scale", "compareBool", "pairDiff", "lagDiff"}:
         return "synthetic-result"
-
-    if op_name == "compare":
-        input_kinds = [node_kinds.get(node_id, "synthetic-result") for node_id in inputs]
-        if input_kinds and any(kind != "source-backed" for kind in input_kinds):
-            return "synthetic-result"
 
     return "source-backed"
 

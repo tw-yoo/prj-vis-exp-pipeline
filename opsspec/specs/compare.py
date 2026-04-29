@@ -1,27 +1,41 @@
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
+
+from pydantic import ConfigDict
 
 from ..core.types import JsonValue
 from .base import BaseOpFields
 
 
 class CompareOp(BaseOpFields):
-    """두 값 비교 후 max/min 스칼라 반환.
-    권장 조합A(스칼라 비교): `targetA`, `targetB`, `which`.
-    조합B(슬라이스 비교): `field` (+ 필요 시 `aggregate`, `groupA/groupB`).
-    조건부: `targetA/B`를 쓰면 보통 `field`는 선택.
+    """Deprecated. compare op was removed; this permissive shim exists only so
+    legacy test fixtures referencing CompareOp keep importing. It is NOT in the
+    operation Union, registry, executor, or validator. Use DiffByValueOp instead.
     """
 
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
     op: Literal["compare"] = "compare"
+    # Permissive: any compare-era field (targetA, targetB, which, group, ...) is accepted.
+    # Marked Any to bypass Pydantic strict validation for legacy data only.
+
+    def __init__(self, **data: Any) -> None:  # type: ignore[no-untyped-def]
+        super().__init__(**data)
+
+
+class DiffByValueOp(BaseOpFields):
+    """단일 scalar 기준값(V)과 차트의 모든 데이터 행을 비교해 delta 시퀀스를 반환.
+    권장 조합A(literal 기준): `value` (scalar 숫자).
+    조합B(ref 기준): `targetValue` ("ref:nX") - 이전 노드의 scalar 결과를 기준으로 사용.
+    `value`와 `targetValue`는 둘 중 하나만 지정.
+    """
+
+    op: Literal["diffByValue"] = "diffByValue"
+    value: Optional[float] = None  # literal 기준값
+    targetValue: Optional[str] = None  # 'ref:nX' 형태 scalar 참조
     field: Optional[str] = None  # 비교 대상 수치 필드명(보통 y축)
-    targetA: Optional[JsonValue] = None  # 값 A (숫자 literal 또는 "ref:nX")
-    targetB: Optional[JsonValue] = None  # 값 B (숫자 literal 또는 "ref:nX")
     group: Optional[str] = None  # 전체 slice 제한용 group/series 이름
-    groupA: Optional[str] = None  # 그룹 A 이름(그룹 간 비교 시)
-    groupB: Optional[str] = None  # 그룹 B 이름(그룹 간 비교 시)
-    aggregate: Optional[str] = None  # 슬라이스 집계 방식(예: avg/sum)
-    which: Optional[Literal["max", "min"]] = None  # 어떤 값을 반환할지
+    signed: Optional[bool] = True  # True면 row.value - V 부호 유지
 
 
 class CompareBoolOp(BaseOpFields):

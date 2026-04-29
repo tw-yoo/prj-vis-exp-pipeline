@@ -12,6 +12,7 @@ from opsspec.core.recursive_models import OpTask
 from opsspec.modules.pipeline import (
     OpsSpecPipeline,
     _build_human_abstracted_ops_spec,
+    _build_text_chunks_from_tasks,
     _persist_debug_bundle,
     _select_next_task,
 )
@@ -44,6 +45,15 @@ class RecursivePipelineTest(unittest.TestCase):
             ollama_api_key="test",
             prompts_dir=self.prompts_dir,
         )
+
+    def test_request_llm_backend_ollama_uses_native_ollama_client(self) -> None:
+        pipeline = self._pipeline()
+
+        request_llm = pipeline._llm_for_request("ollama")
+
+        self.assertEqual(request_llm.backend, "ollama_native")
+        self.assertEqual(request_llm.backend_override, "ollama")
+        self.assertEqual(request_llm.ollama_base_url, "http://localhost:11434/v1")
 
     def test_select_next_task_prefers_ready_task_with_min_id(self) -> None:
         remaining = {
@@ -273,9 +283,79 @@ class RecursivePipelineTest(unittest.TestCase):
         self.assertEqual(op1.meta.sentenceIndex, 1)
         self.assertEqual(op2.meta.sentenceIndex, 2)
         self.assertEqual(op3.meta.sentenceIndex, 2)
+        self.assertEqual(result.text_chunks["ops"], "average revenue for Broadcasting")
+        self.assertEqual(
+            result.text_chunks["ops2"],
+            "revenue greater than that average (Broadcasting) pick the maximum season",
+        )
         self.assertTrue(str(op1.meta.source).startswith("recursive_step=1;"))
         self.assertTrue(str(op2.meta.source).startswith("recursive_step=2;"))
         self.assertTrue(str(op3.meta.source).startswith("recursive_step=3;"))
+
+    def test_text_chunks_use_inventory_mentions_not_sentence_split(self) -> None:
+        tasks = [
+            OpTask(
+                taskId="o1",
+                op="filter",
+                sentenceIndex=1,
+                mention="Filter to 2016",
+                paramsHint={"field": "@primary_dimension", "include": ["2016"]},
+            ),
+            OpTask(
+                taskId="o2",
+                op="average",
+                sentenceIndex=2,
+                mention="compute the average",
+                paramsHint={"field": "@primary_measure"},
+            ),
+            OpTask(
+                taskId="o3",
+                op="compareBool",
+                sentenceIndex=3,
+                mention="compare the result with 2017",
+                paramsHint={"operator": ">"},
+            ),
+        ]
+
+        text_chunks = _build_text_chunks_from_tasks(tasks)
+
+        self.assertEqual(text_chunks["ops"], "Filter to 2016")
+        self.assertEqual(text_chunks["ops2"], "compute the average")
+        self.assertEqual(text_chunks["ops3"], "compare the result with 2017")
+
+    def test_text_chunks_merge_adjacent_sentences_and_ignore_noop_spans(self) -> None:
+        tasks = [
+            OpTask(
+                taskId="o1",
+                op="average",
+                sentenceIndex=1,
+                mention="Find the average revenue for Broadcasting. Use that same average as the benchmark.",
+                paramsHint={"field": "@primary_measure", "group": "Broadcasting"},
+            ),
+            OpTask(
+                taskId="o2",
+                op="filter",
+                sentenceIndex=2,
+                mention="Filter rows above that benchmark.",
+                paramsHint={"field": "@primary_measure", "operator": ">", "value": "ref:n1"},
+            ),
+            OpTask(
+                taskId="o3",
+                op="findExtremum",
+                sentenceIndex=2,
+                mention="Filter rows above that benchmark.",
+                paramsHint={"field": "@primary_measure", "which": "max"},
+            ),
+        ]
+
+        text_chunks = _build_text_chunks_from_tasks(tasks)
+
+        self.assertEqual(
+            text_chunks["ops"],
+            "Find the average revenue for Broadcasting. Use that same average as the benchmark.",
+        )
+        self.assertEqual(text_chunks["ops2"], "Filter rows above that benchmark.")
+        self.assertNotIn("ops3", text_chunks)
 
     def test_generate_includes_human_abstracted_payload_for_debug_bundle(self) -> None:
         inventory_payload = {

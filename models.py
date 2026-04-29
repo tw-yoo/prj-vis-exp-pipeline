@@ -12,6 +12,7 @@ class GenerateGrammarRequest(BaseModel):
     vega_lite_spec: dict = Field(..., description="Vega-Lite spec JSON")
     data_rows: list[dict] = Field(..., description="Raw data rows (<500 lines assumed)")
     debug: bool = True
+    llm_backend: Literal["openai", "ollama"] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -21,6 +22,7 @@ class GenerateGrammarRequestBodyRequest(BaseModel):
     explanation: str = Field(..., min_length=1)
     chart_id: str = Field(..., min_length=1, description="ChartQA chart id / Vega-Lite spec id")
     debug: bool = True
+    llm_backend: Literal["openai", "ollama"] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -28,6 +30,7 @@ class GenerateGrammarRequestBodyRequest(BaseModel):
 class GenerateGrammarResponse(BaseModel):
     ops_spec: dict[str, list[OperationSpec]] = Field(default_factory=dict)
     chart_context: OpsChartContext
+    text_chunks: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     trace: RecursivePipelineTrace | None = None
     visual_execution_plan: dict = Field(default_factory=dict)

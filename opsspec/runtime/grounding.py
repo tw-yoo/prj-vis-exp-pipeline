@@ -231,7 +231,7 @@ def ground_op_spec(
             field_warnings.append(warn)
             field_normalized["field"] = normalized_field
 
-    # pairDiff / compare 계열의 field-like 키 정규화(by, seriesField)
+    # pairDiff 계열의 field-like 키 정규화(by, seriesField)
     field_normalized, by_warnings = _normalize_field_like_key(
         field_normalized, key="by", chart_context=chart_context
     )

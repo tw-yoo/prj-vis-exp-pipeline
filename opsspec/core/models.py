@@ -36,9 +36,9 @@ class ChartContext(BaseModel):
 
 NodeId = constr(pattern=r"^n[0-9]+$")  # type: ignore[valid-type]
 
-# Sentence-layer groups:
-# - sentence 1 -> "ops"
-# - sentence k -> f"ops{k}" for k>=2
+# Chunk-layer groups:
+# - chunk 1 -> "ops"
+# - chunk k -> f"ops{k}" for k>=2
 GroupName = constr(pattern=r"^(ops|ops[2-9]|ops[1-9][0-9]+)$")  # type: ignore[valid-type]
 
 
@@ -69,6 +69,7 @@ class RecursivePipelineTrace(BaseModel):
 class GenerateOpsSpecResponse(BaseModel):
     ops_spec: Dict[str, List[OperationSpec]] = Field(default_factory=dict)
     chart_context: ChartContext
+    text_chunks: Dict[str, str] = Field(default_factory=dict)
     warnings: List[str] = Field(default_factory=list)
     trace: Optional[RecursivePipelineTrace] = None
 

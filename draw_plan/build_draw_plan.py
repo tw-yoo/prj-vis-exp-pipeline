@@ -55,14 +55,13 @@ HIGHLIGHT_OPS: Set[str] = {
     "nth",
     "setOp",
     "lagDiff",
-    "compare",
     "pairDiff",
 }
-SCALAR_LINE_OPS: Set[str] = {"average", "diff", "count", "compare", "compareBool", "add", "scale", "findExtremum"}
-SCALAR_TEXT_OPS: Set[str] = {"average", "diff", "count", "compare", "compareBool", "add", "scale", "sum", "findExtremum"}
+SCALAR_LINE_OPS: Set[str] = {"average", "diff", "count", "compareBool", "add", "scale", "findExtremum", "diffByValue"}
+SCALAR_TEXT_OPS: Set[str] = {"average", "diff", "count", "compareBool", "add", "scale", "sum", "findExtremum", "diffByValue"}
 SUM_OPS: Set[str] = {"sum"}
-CONNECT_OPS: Set[str] = {"compare", "diff"}
-LINE_ANCHORED_TEXT_OPS: Set[str] = {"average", "diff", "compare", "findExtremum"}
+CONNECT_OPS: Set[str] = {"diff"}
+LINE_ANCHORED_TEXT_OPS: Set[str] = {"average", "diff", "findExtremum", "diffByValue"}
 TEXT_ABOVE_LINE_GAP_NORM = 0.03125
 
 
@@ -802,7 +801,7 @@ def build_draw_ops_spec(
                     )
 
             if op_name in SCALAR_LINE_OPS:
-                if op_name in {"diff", "compare"} and (emitted_scalar_panel_diff or emitted_panel_scalar_bridge):
+                if op_name == "diff" and (emitted_scalar_panel_diff or emitted_panel_scalar_bridge):
                     continue
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:
@@ -821,7 +820,7 @@ def build_draw_ops_spec(
                     )
 
             if op_name in SCALAR_TEXT_OPS:
-                if op_name in {"diff", "compare"} and (emitted_scalar_panel_diff or emitted_panel_scalar_bridge):
+                if op_name == "diff" and (emitted_scalar_panel_diff or emitted_panel_scalar_bridge):
                     continue
                 scalar = _resolve_scalar(result_rows)
                 if scalar is not None:

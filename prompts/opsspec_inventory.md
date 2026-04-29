@@ -49,9 +49,11 @@ Rules:
   - Multiple adjacent sentences may merge into one chunk if together they express one coherent act.
   - Rhetorical bridge, restatement, transition, confirmation, or interpretation-only text should not become standalone tasks.
   - Absorb such non-substantive text into the nearest substantive chunk mention.
-- No-op chunk rule:
-  - If a chunk does not require a new operation, produce no task for that chunk.
-  - Do NOT invent an operation merely to preserve chunk count.
+- Sparse operation extraction:
+  - Treat the explanation as a set of text spans with possible visual/computational intent.
+  - Create tasks only for spans that actually describe an operation-bearing act.
+  - It is acceptable for explanatory, rhetorical, or interpretive spans to have no task.
+  - Never use task count to mirror sentence count or chunk count.
 - Only extract operations that are explicitly mentioned in the explanation.
   - Do NOT invent extra steps just because an op exists in allowed_ops.
   - Do NOT add operations that are logically implied but not stated —
@@ -96,7 +98,7 @@ Rules:
 - If the same op name appears in different parts of the explanation with different intent/arguments,
   create separate tasks with different taskIds.
 - Build tasks as a minimal executable plan:
-  - include prerequisite steps (filter/aggregate/compare) needed to derive the final intended artifact.
+  - include prerequisite steps (filter/aggregate/diff) needed to derive the final intended artifact.
   - avoid redundant branches that do not contribute to the final artifact.
 - sentenceIndex MUST be the 1-based order of the meaningful chunk that explicitly names or describes this task's action.
   - Assign a task to the chunk whose verb/action directly corresponds to this op
@@ -161,7 +163,7 @@ Rules:
     question: "in which years did Thailand's revenue exceed Philippines?"
     → This chunk requires TWO ops:
       1) filter(field="Country", include=["Thailand", "Philippines"])  ← the explicit "filter"
-      2) pairDiff(...) ← implicit "compare" to prepare for later question answering
+      2) pairDiff(...) ← implicit pairwise comparison to prepare for later question answering
       So taskIds: o1 (filter), o2 (pairDiff) with sentenceIndex=1 for both.
     → Do NOT create filter-only (no pairDiff) just because the chunk only mentions "filter".
     → The question context ("Thailand exceeded Philippines") reveals that pairDiff is needed.

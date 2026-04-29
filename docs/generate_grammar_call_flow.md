@@ -15,7 +15,7 @@
 
 - OpenAI
   - `OPENAI_API_KEY`
-  - `OPENAI_MODEL` (기본 `gpt-4o-mini`)
+  - `OPENAI_MODEL` (기본 `gpt-5.4-mini`)
   - `OPENAI_BASE_URL` (기본 `https://api.openai.com/v1`)
 - Ollama
   - `LLM_BACKEND=ollama`

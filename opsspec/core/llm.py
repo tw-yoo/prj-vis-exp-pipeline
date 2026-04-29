@@ -5,6 +5,7 @@ import logging
 import os
 import ssl
 import time
+from pathlib import Path
 import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional, Type
@@ -29,6 +30,30 @@ except ImportError:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
+def _project_secret_path() -> Path:
+    return Path(__file__).resolve().parents[2] / "secret.json"
+
+
+def _secret_value(key: str) -> str:
+    path = _project_secret_path()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return ""
+    except Exception as exc:
+        logger.warning("Failed to read secret.json at %s: %s", path, exc)
+        return ""
+    if not isinstance(payload, dict):
+        logger.warning("secret.json at %s must contain a JSON object.", path)
+        return ""
+    value = payload.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _openai_api_key() -> str:
+    return _secret_value("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY", "").strip()
+
+
 class StructuredLLMClient:
     def __init__(
         self,
@@ -36,11 +61,13 @@ class StructuredLLMClient:
         ollama_base_url: str,
         ollama_api_key: str,
         instructor_mode: str = "JSON",
+        backend_override: Optional[str] = None,
     ) -> None:
         self.ollama_model = ollama_model
         self.ollama_base_url = ollama_base_url
         self.ollama_api_key = ollama_api_key
         self.instructor_mode = instructor_mode
+        self.backend_override = (backend_override or "").strip().lower()
         self.backend: Optional[str] = None
         self.client: Any = None
 
@@ -71,13 +98,13 @@ class StructuredLLMClient:
         if self.backend is not None:
             return
 
-        forced_backend = os.getenv("LLM_BACKEND", "").strip().lower()
-        has_openai_key = bool(os.getenv("OPENAI_API_KEY", "").strip())
+        forced_backend = self.backend_override or os.getenv("LLM_BACKEND", "").strip().lower()
+        has_openai_key = bool(_openai_api_key())
 
         # Default to ChatGPT/OpenAI API when credentials are available.
         # Use LLM_BACKEND to override (e.g., "ollama" for local runs).
         if forced_backend in {"", "openai", "chatgpt"} and has_openai_key:
-            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+            model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
             self.backend = "openai_http"
             self.client = None
             logger.info(
@@ -88,7 +115,17 @@ class StructuredLLMClient:
             return
 
         if forced_backend in {"openai", "chatgpt"} and not has_openai_key:
-            raise RuntimeError("LLM_BACKEND=openai requires OPENAI_API_KEY.")
+            raise RuntimeError("LLM_BACKEND=openai requires OPENAI_API_KEY in secret.json or env.")
+
+        if forced_backend == "ollama":
+            self.backend = "ollama_native"
+            self.client = None
+            logger.info(
+                "LLM backend: ollama_native | model=%s base_url=%s",
+                self.ollama_model,
+                self.ollama_base_url,
+            )
+            return
 
         if instructor is not None and OpenAI is not None:
             base = OpenAI(base_url=self.ollama_base_url, api_key=self.ollama_api_key)
@@ -238,8 +275,8 @@ class StructuredLLMClient:
         user_prompt: str,
         task_name: str,
     ) -> Dict[str, Any]:
-        api_key = os.getenv("OPENAI_API_KEY", "").strip()
-        model = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+        api_key = _openai_api_key()
+        model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
         base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         endpoint = f"{base_url}/chat/completions"
 

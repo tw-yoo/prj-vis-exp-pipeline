@@ -38,8 +38,9 @@
 `nlp_server`는 **(question + explanation) 자연어 텍스트**와 **Vega-Lite spec + data rows**를 입력으로 받아, 최종적으로 **OpsSpec(=grammar)** DAG를 생성해서 반환하는 서버입니다.
 
 - 출력 OpsSpec은 “legacy operation set(비-드로우)” 기반이며, 각 op에 `meta.nodeId` / `meta.inputs`가 포함되어 DAG를 복원할 수 있습니다.
-- `/generate_grammar`는 웹/TS가 쉽게 소비할 수 있도록 **opsSpec group map + draw_plan + execution plans**를 함께 반환합니다:
-  - `{ "ops": [...], "ops2": [...], ..., "draw_plan": { ... }, "execution_plan": { ... }, "visual_execution_plan": { ... } }`
+- `/generate_grammar`는 **opsSpec group map + 문장 단위 텍스트만** 반환합니다(시각화 plan 컴파일은 별도 엔드포인트):
+  - `{ "ops": [...], "ops2": [...], ..., "text_chunks": { ... } }`
+- 시각화 실행 plan(`draw_plan` / `execution_plan` / `visual_execution_plan`)이 필요하면 클라이언트가 `/compile_ops_plan`을 별도 호출합니다.
 
 ---
 
@@ -92,8 +93,8 @@ Endpoint 구현:
 주요 엔드포인트:
 - `GET /health`
 - `GET /op_registry` (op 계약/스키마 힌트)
-- `POST /generate_grammar` (recursive pipeline, opsSpec + draw_plan 응답)
-- `POST /compile_ops_plan` (기존 opsSpec group map을 canonicalize/schedule 후 draw_plan + execution plans로 컴파일)
+- `POST /generate_grammar` (recursive pipeline, opsSpec group map + text_chunks만 응답; 시각화 plan은 별도 호출)
+- `POST /compile_ops_plan` (opsSpec group map을 canonicalize/schedule 후 draw_plan + execution plans로 컴파일; `/generate_grammar` 결과를 받아 시각화 단계에서 호출)
 - `POST /run_module_trace` (inventory + steps + ops_spec + trace 반환)
 - `POST /run_python_plan` (시나리오 파일로 grammar+draw plan 생성)
 - `POST /answer_question` (spec/csv 경로 입력으로 plan + answer + explanation 생성)
@@ -172,7 +173,7 @@ Cross-node scalar reference:
 ## 6) Debug 번들(연구 재현성)
 
 **모든 요청(성공/실패)** 에서 번들을 저장합니다. 실패 시 `99_error.json`을 포함하며, 성공 시에는 모든 단계 JSON + trace 마크다운이 남습니다.
-`/generate_grammar`는 `draw_plan`, `execution_plan`, `visual_execution_plan`을 함께 반환합니다. `trace` 객체는 `debug=true`일 때 응답에 포함되고, 구조화 trace 조회용 엔드포인트는 `/run_module_trace`입니다.
+`/generate_grammar` 응답에는 OpsSpec group map과 `text_chunks`만 포함됩니다(시각화 plan은 `/compile_ops_plan`이 담당). 단, 디버그 번들의 `95_draw_plan.json`은 pipeline 내부에서 별도로 산출·저장되므로 응답 슬림화의 영향을 받지 않습니다. `trace` 객체는 `debug=true`일 때 응답에 포함되고, 구조화 trace 조회용 엔드포인트는 `/run_module_trace`입니다.
 
 저장 위치:
 - `/Users/taewon_1/Desktop/vis-exp/explainable_chart_qa/prj-vis-exp/prj-vis-exp/nlp_server/opsspec/debug/<MMddhhmm>/`

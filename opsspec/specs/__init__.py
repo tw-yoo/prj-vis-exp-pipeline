@@ -1,7 +1,7 @@
 from .add import AddOp
 from .aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from .base import BaseOpFields, OpsMeta, OpsMetaView
-from .compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
+from .compare import CompareBoolOp, CompareOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
 from .filter import FilterOp
 from .range_sort_select import FindExtremumOp, NthOp, SortOp
 from .scale import ScaleOp
@@ -15,6 +15,7 @@ __all__ = [
     "CompareBoolOp",
     "CompareOp",
     "CountOp",
+    "DiffByValueOp",
     "DiffOp",
     "FilterOp",
     "FindExtremumOp",

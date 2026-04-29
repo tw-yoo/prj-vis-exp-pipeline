@@ -7,7 +7,7 @@ from ..core.models import ChartContext
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.base import BaseOpFields
-from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
+from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -100,14 +100,15 @@ _OP_SEQUENCE: Tuple[OpContract, ...] = (
         ),
     ),
     OpContract(
-        op_name="compare",
-        model_cls=CompareOp,
+        op_name="diffByValue",
+        model_cls=DiffByValueOp,
         required_fields=tuple(),
         semantic_rules=(
-            "Compares two slices: targetA vs targetB (dimension labels) or groupA vs groupB (series values).",
-            "which='max' returns the larger side; which='min' returns the smaller side; omit to return both.",
-            "aggregate='sum' or 'average' computes an aggregate over the slice before comparing.",
-            "Use scalar refs ('ref:nX') in targetA/targetB when values come from prior nodes.",
+            "Computes the delta between every chart row and a single scalar reference value V.",
+            "Specify V either as `value` (numeric literal) or `targetValue` ('ref:nX' pointing to a prior scalar node) - exactly one of the two. meta.inputs fallback is NOT allowed; targetValue must be explicit.",
+            "signed=true (default) returns row.value - V; signed=false returns the absolute difference.",
+            "field defaults to primary_measure when omitted; group restricts to a single series slice first.",
+            "Result is a row list (one delta per input row), not a scalar.",
         ),
     ),
     OpContract(

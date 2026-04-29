@@ -7,7 +7,7 @@ from ..core.datum import DatumValue
 from ..core.models import ChartContext
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
-from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
+from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -153,8 +153,8 @@ class OpsSpecExecutor:
             return self._op_filter(data, op)
         if isinstance(op, FindExtremumOp):
             return self._op_find_extremum(data, op)
-        if isinstance(op, CompareOp):
-            return self._op_compare(data, op)
+        if isinstance(op, DiffByValueOp):
+            return self._op_diff_by_value(data, op)
         if isinstance(op, CompareBoolOp):
             return self._op_compare_bool(data, op)
         if isinstance(op, SortOp):
@@ -401,15 +401,40 @@ class OpsSpecExecutor:
         sorted_values = sorted(sliced, key=lambda item: self._value_key(item, op.field))
         return [sorted_values[-rank] if pick_max else sorted_values[rank - 1]]
 
-    def _op_compare(self, data: List[DatumValue], op: CompareOp) -> List[DatumValue]:
-        left = self._slice_for_selector(data, op.targetA, op.groupA or op.group, op.field)
-        right = self._slice_for_selector(data, op.targetB, op.groupB or op.group, op.field)
-        if not left or not right:
+    def _op_diff_by_value(self, data: List[DatumValue], op: DiffByValueOp) -> List[DatumValue]:
+        reference = self._resolve_diff_by_value_reference(op)
+        if reference is None:
             return []
-        left_value = self._aggregate([item.value for item in left], op.aggregate)
-        right_value = self._aggregate([item.value for item in right], op.aggregate)
-        pick_max = op.which != "min"
-        return [left[-1] if (left_value >= right_value if pick_max else left_value <= right_value) else right[-1]]
+        sliced = self._slice_by_group(data, op.group)
+        signed = op.signed if op.signed is not None else True
+        out: List[DatumValue] = []
+        for item in sliced:
+            numeric = to_float(item.value)
+            if numeric is None:
+                continue
+            delta = numeric - reference if signed else abs(numeric - reference)
+            out.append(replace(item, value=round(delta, 2), name=f"Δ vs {round(reference, 2)}"))
+        return out
+
+    def _resolve_diff_by_value_reference(self, op: DiffByValueOp) -> Optional[float]:
+        # scalar 기준값은 value(literal) 또는 targetValue("ref:nX") 중 하나여야 한다.
+        # meta.inputs fallback은 허용하지 않는다 (validators.py와 동일 규칙).
+        literal = to_float(op.value)
+        if literal is not None:
+            return literal
+        ref_source = op.targetValue
+        if not isinstance(ref_source, str) or not ref_source.strip():
+            return None
+        ref_key = ref_source.strip()
+        if ref_key.startswith("ref:"):
+            ref_key = ref_key[len("ref:"):]
+        rows = self.runtime.get(ref_key) or []
+        if not rows:
+            return None
+        values = [v for v in (to_float(item.value) for item in rows) if v is not None]
+        if not values:
+            return None
+        return values[0] if len(values) == 1 else sum(values) / len(values)
 
     def _op_compare_bool(self, data: List[DatumValue], op: CompareBoolOp) -> List[DatumValue]:
         if not op.operator:

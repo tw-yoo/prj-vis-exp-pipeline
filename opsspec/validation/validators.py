@@ -7,7 +7,7 @@ from ..core.models import ChartContext
 from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS, get_contract, resolve_chart_family
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
-from ..specs.compare import CompareBoolOp, CompareOp, DiffOp, LagDiffOp, PairDiffOp
+from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -405,17 +405,18 @@ def validate_operation(
             )
         return op, warnings
 
-    if isinstance(op, CompareOp):
-        if op.targetA is None:
-            raise ValueError('compare targetA는 필수입니다 (scalar ref "ref:nX" 형식)')
-        if op.targetB is None:
-            raise ValueError('compare targetB는 필수입니다 (scalar ref "ref:nX" 형식)')
-        if op.which is None:
-            raise ValueError('compare which는 필수입니다 ("min" 또는 "max")')
-        if op.meta is not None and len(op.meta.inputs) != 2:
+    if isinstance(op, DiffByValueOp):
+        has_literal = op.value is not None and to_float(op.value) is not None
+        has_ref = isinstance(op.targetValue, str) and re.fullmatch(r"ref:n\d+", op.targetValue) is not None
+        # meta.inputs fallback은 허용하지 않는다.
+        # scalar 기준값은 반드시 value(literal) 또는 targetValue("ref:nX") 중 하나로 명시해야 한다.
+        if not has_literal and not has_ref:
             raise ValueError(
-                f'compare meta.inputs에 정확히 2개의 nodeId가 필요합니다 (현재 {len(op.meta.inputs)}개)'
+                'diffByValue는 value(literal)나 targetValue("ref:nX") 중 하나를 반드시 지정해야 합니다. '
+                'meta.inputs fallback은 허용되지 않습니다.'
             )
+        if has_literal and has_ref:
+            raise ValueError('diffByValue는 value와 targetValue를 동시에 사용할 수 없습니다.')
         return op, warnings
 
     if isinstance(op, ScaleOp):

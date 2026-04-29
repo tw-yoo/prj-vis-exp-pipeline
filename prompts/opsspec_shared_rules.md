@@ -23,13 +23,13 @@ Shared rules (apply to ALL modules):
 
 6) Meaningful-chunk grouping:
 - Group names represent ordered reasoning chunks, not grammatical sentences and not series branches.
-- sentenceIndex is a legacy field name; interpret it as chunk order.
+- sentenceIndex is a legacy public-schema field name; interpret it as chunk order, not sentence order.
 - The pipeline maps:
   - chunkIndex=1 -> group "ops"
   - chunkIndex=k (k>=2) -> group "ops{k}" (examples: "ops2", "ops3", "ops10")
 - Do NOT use a "last" group.
-- If a text span does not require a new visual/computational step, do NOT create a standalone op just to preserve chunk count.
-- Instead, absorb rhetorical bridge / transition / interpretation-only text into the nearest substantive chunk mention.
+- Operation extraction is sparse: a text span without operation-bearing intent can have no task.
+- Absorb rhetorical bridge / transition / interpretation-only text into the nearest substantive chunk mention when it helps preserve context.
 
 7) Series restriction (CRITICAL):
 - Do NOT restrict series values via a filter on the series field.
