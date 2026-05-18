@@ -131,6 +131,15 @@ class ValidatorsTest(unittest.TestCase):
                 chart_context=context_with_season_domain,
             )
 
+    def test_filter_accepts_x_kind_hint(self) -> None:
+        op = FilterOp(op="filter", field="season", include=["2016/17"], xKindHint="temporal")
+        normalized, _ = validate_operation(op, chart_context=self.context)
+        self.assertEqual(normalized.xKindHint, "temporal")
+
+    def test_filter_rejects_invalid_x_kind_hint(self) -> None:
+        with self.assertRaises(ValueError):
+            FilterOp(op="filter", field="season", include=["2016/17"], xKindHint="date-like")
+
     def test_average_defaults_to_primary_measure(self) -> None:
         op = AverageOp(op="average", field=None)
         normalized, _ = validate_operation(op, chart_context=self.context)

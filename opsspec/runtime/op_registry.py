@@ -84,6 +84,7 @@ _OP_SEQUENCE: Tuple[OpContract, ...] = (
             "Group-only mode: provide op.group only (string or list with OR semantics).",
             "Never filter on series_field directly; use op.group to restrict series instead.",
             "op.group can be a string or list of strings; a list means OR semantics across groups.",
+            "Optional xKindHint may be one of temporal, quantitative, ordinal, nominal, unknown; use it only as an x-axis semantic hint, not as a visual instruction.",
         ),
     ),
     OpContract(

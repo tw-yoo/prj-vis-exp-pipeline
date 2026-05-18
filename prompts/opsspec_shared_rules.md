@@ -44,6 +44,13 @@ Shared rules (apply to ALL modules):
   - FilterOp comparison mode also allows row-order interval slicing:
     { "op": "filter", "field": "<categorical_field>", "operator": "between", "value": ["2009","2014"] }
     This means inclusive slice from first "2009" to first "2014" after it.
+  - FilterOp may include optional "xKindHint" to describe the x-axis semantic kind:
+    "temporal", "quantitative", "ordinal", "nominal", or "unknown".
+    Prefer chart_context / Vega-Lite x encoding when available. Use "temporal" for date/year/month/quarter/time axes,
+    "quantitative" when x position is a numeric magnitude, "ordinal" for rank/stage/order axes, and "nominal" for countries/products/names.
+    Examples:
+    { "op": "filter", "field": "Year", "operator": "between", "value": ["2008","2011"], "xKindHint": "temporal" }
+    { "op": "filter", "field": "country", "include": ["USA","KOR"], "xKindHint": "nominal" }
   - For pairwise differences, prefer op="pairDiff" with by/groupA/groupB.
   - If groupA/groupB are values of a non-default field, set pairDiff.seriesField explicitly.
 

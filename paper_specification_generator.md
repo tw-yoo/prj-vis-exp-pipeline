@@ -100,7 +100,8 @@ It must follow the injected `ops_contract_json`:
     "field": "@primary_measure",
     "operator": ">",
     "value": "ref:n1",
-    "group": "Broadcasting"
+    "group": "Broadcasting",
+    "xKindHint": "temporal"
   },
   "inputs": ["n1"],
   "warnings": []
@@ -114,6 +115,7 @@ It must follow the injected `ops_contract_json`:
 - scalar references must be string-only (`"ref:nX"`)
 - no object ref (`{"id":"nX"}`)
 - `inputs` must reference existing nodes only
+- FilterOp may include optional `xKindHint` (`temporal`, `quantitative`, `ordinal`, `nominal`, `unknown`) to describe the x-axis semantic kind; it is a runtime policy hint, not a visual directive.
 
 ---
 
@@ -185,6 +187,7 @@ Required structure:
 - only allowed ops used?
 - no visual directive ops?
 - no series-field filter task?
+- filter `xKindHint`, when present, is only one of `temporal`, `quantitative`, `ordinal`, `nominal`, `unknown`?
 - minimal executable task graph?
 
 ### Module 2 checklist

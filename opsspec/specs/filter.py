@@ -21,3 +21,4 @@ class FilterOp(BaseOpFields):
     operator: Optional[str] = None  # 비교 연산자 (예: >, <, ==, between)
     value: Optional[JsonValue] = None  # 비교값/범위값 (literal 또는 "ref:nX")
     group: Optional[Union[str, List[str]]] = None  # group/series 이름 1개 또는 여러 개(OR)
+    xKindHint: Optional[Literal["temporal", "quantitative", "ordinal", "nominal", "unknown"]] = None  # x축 semantic kind 힌트(런타임에서 spec과 함께 검증)
