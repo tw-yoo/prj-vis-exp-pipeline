@@ -69,7 +69,35 @@ Shared rules (apply to ALL modules):
 - Use op="add" to add two scalar values.
 - targetA/targetB must be scalar refs ("ref:nX") or numeric literals.
 
-11) Final artifact consistency:
+11) DiffByValue rule:
+- Use op="diffByValue" to compute per-row deviation from a single scalar reference V (= row.value − V for every row in the working slice).
+- Specify V either as `value` (numeric literal) or `targetValue` ("ref:nX" pointing to a prior scalar node) — EXACTLY one of the two. meta.inputs fallback is NOT allowed; targetValue must be explicit when V comes from a prior node.
+- Default `signed=true` returns row.value − V (signed delta). Set `signed=false` only when the explanation says "absolute distance / magnitude".
+- Result is a row list (one delta per input row), not a scalar.
+- Distinguish from `diff` (compares two specific targetA/targetB scalars) and `lagDiff` (compares adjacent rows in a sequence): diffByValue compares EVERY row against ONE reference V.
+
+12) ScaleOp rule:
+- Use op="scale" for scalar arithmetic (constant multiplication): result = target × factor.
+- target must be a scalar ref ("ref:nX") or numeric literal; factor is a numeric multiplier.
+- Common factor values: 2 (doubled), 0.5 (halved / midpoint pattern), 100 (to percent), 0.01 (to fraction).
+- For the "midpoint of A and B (= (A + B) / 2)" pattern, emit `add(A, B)` first then `scale(target=ref:n_add, factor=0.5)`. Do NOT use `diff(mode=ratio)` for arithmetic midpoint.
+- scale is scalar arithmetic only (not row aggregation; use rollingWindow/average for sliding/mean).
+
+13) Derived-pattern ops (range / rollingWindow / monotonicRun):
+- "spread" / "variation" / "max minus min" / "range between highest and lowest"
+    → prefer op="range" over the verbose chain findExtremum(max)+findExtremum(min)+diff.
+- "3-year average" / "N-consecutive-year window" / "moving average / sum / min / max"
+    → prefer op="rollingWindow" with window=N and aggregate one of "sum|avg|min|max"
+    (default "avg"). Use orderField for the sliding axis (typically the x-axis dimension).
+- "longest period of decrease / increase" / "continuous run of decreasing/increasing"
+    → op="monotonicRun" with direction set and mode="longest" (default).
+- "year when X starts to decrease/increase" / "first break point"
+    → op="monotonicRun" with direction set and mode="firstBreak".
+- "all stretches of N or more consecutive increases/decreases"
+    → op="monotonicRun" with mode="all" and minLength=N.
+- For range/rollingWindow/monotonicRun, group is a single-series restriction when given.
+
+14) Final artifact consistency:
 - For each request, produce one primary final artifact type (scalar, boolean, or row-list).
 - Intermediate artifacts may differ, but each intermediate node should contribute to deriving that final artifact.
 - Avoid dangling branches that do not feed into any later node.

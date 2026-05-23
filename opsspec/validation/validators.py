@@ -8,6 +8,7 @@ from ..runtime.op_registry import ALLOWED_OPS, LEGACY_NON_DRAW_OPS, get_contract
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
+from ..specs.derived import MonotonicRunOp, RangeOp, RollingWindowOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -364,6 +365,9 @@ def validate_operation(
             RetrieveValueOp,
             LagDiffOp,
             NthOp,
+            RangeOp,
+            RollingWindowOp,
+            MonotonicRunOp,
         ),
     ):
         normalized_group = _normalize_series_group_for_single_group_ops(
@@ -497,6 +501,41 @@ def validate_operation(
 
     if isinstance(op, NthOp) and op.n is None:
         raise ValueError("nth requires n")
+
+    if isinstance(op, RangeOp):
+        updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
+        warnings.extend(op_warnings)
+        return updated, warnings
+
+    if isinstance(op, RollingWindowOp):
+        if not isinstance(op.window, int) or op.window < 1:
+            raise ValueError("rollingWindow requires a positive integer 'window'")
+        if op.aggregate is not None and op.aggregate not in {"sum", "avg", "min", "max"}:
+            raise ValueError(
+                f'rollingWindow aggregate must be one of sum/avg/min/max (got "{op.aggregate}")'
+            )
+        if op.orderField is not None:
+            _ensure_field_exists(op.orderField, chart_context)
+        updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
+        warnings.extend(op_warnings)
+        return updated, warnings
+
+    if isinstance(op, MonotonicRunOp):
+        if op.direction is not None and op.direction not in {"increasing", "decreasing"}:
+            raise ValueError(
+                f'monotonicRun direction must be "increasing" or "decreasing" (got "{op.direction}")'
+            )
+        if op.mode is not None and op.mode not in {"longest", "firstBreak", "all"}:
+            raise ValueError(
+                f'monotonicRun mode must be one of longest/firstBreak/all (got "{op.mode}")'
+            )
+        if op.minLength is not None and op.minLength < 2:
+            raise ValueError("monotonicRun minLength must be >= 2")
+        if op.orderField is not None:
+            _ensure_field_exists(op.orderField, chart_context)
+        updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
+        warnings.extend(op_warnings)
+        return updated, warnings
 
     field = getattr(op, "field", None)
     if isinstance(field, str):

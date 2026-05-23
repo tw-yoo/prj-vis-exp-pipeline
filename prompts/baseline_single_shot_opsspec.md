@@ -179,6 +179,22 @@ Specific operation reminders (extended-field semantics):
   - absolute=true returns absolute magnitudes of adjacent-period differences. Use for "absolute year-over-year change", "size of period-to-period swings".
   - order="asc"|"desc" controls the ordering used to define adjacency.
 - For op="sum": use only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.
+- For op="range":
+  - Computes max − min of the working slice as a single scalar.
+  - field defaults to primary_measure; group restricts to one series first.
+  - Use this instead of findExtremum(max)+findExtremum(min)+diff when the intent is "spread / variation / range".
+- For op="rollingWindow":
+  - window is a required positive integer (e.g., 3 for a 3-year window).
+  - aggregate is one of "sum"|"avg"|"min"|"max" (default "avg").
+  - orderField is the sliding axis (typically the x-axis dimension such as "Year").
+  - field defaults to primary_measure; group restricts to one series first.
+  - Result is a row list of (N − window + 1) windows; chain with findExtremum/nth to pick the best/worst window.
+- For op="monotonicRun":
+  - direction is "increasing" or "decreasing" (default "increasing").
+  - mode = "longest" (default), "firstBreak" (starting point of the first run), or "all" (every qualifying run flattened).
+  - minLength filters out runs shorter than the count (default 2). Use minLength=3 for "more than 2 years".
+  - orderField is the scan axis (typically the x-axis dimension); field is the measure compared between adjacent rows.
+  - Pick "firstBreak" only when the question asks for the starting point of a trend; otherwise "longest" matches "longest period of decrease/increase".
 
 DATA RESOLUTION RULE:
 When a task requires selecting a specific subset of data items

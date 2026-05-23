@@ -8,6 +8,7 @@ from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.base import BaseOpFields
 from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
+from ..specs.derived import MonotonicRunOp, RangeOp, RollingWindowOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -247,6 +248,48 @@ _OP_SEQUENCE: Tuple[OpContract, ...] = (
             "Scales a scalar target by a constant factor and returns one scalar result.",
             "target must be a scalar ref string ('ref:nX') or a numeric literal.",
             "factor must be a numeric multiplier (e.g., 2.0 for doubling).",
+        ),
+    ),
+    OpContract(
+        op_name="range",
+        model_cls=RangeOp,
+        required_fields=tuple(),
+        semantic_rules=(
+            "Computes the spread (max - min) of the working dataset as a scalar.",
+            "field is the numeric measure column; defaults to primary_measure when omitted.",
+            "group restricts to a specific series slice before computing the spread.",
+            "Use range INSTEAD of findExtremum(max)+findExtremum(min)+diff when the semantic intent is 'range / spread / variation'.",
+            "Result is a scalar.",
+        ),
+    ),
+    OpContract(
+        op_name="rollingWindow",
+        model_cls=RollingWindowOp,
+        required_fields=("window",),
+        semantic_rules=(
+            "Computes a sliding-window aggregate over an ordered series.",
+            "window is a positive integer giving the window length (e.g., window=3 for 3-year average).",
+            "aggregate is one of 'sum'/'avg'/'min'/'max'; defaults to 'avg'.",
+            "orderField is the axis to slide along (typically a dimension such as 'Year'); defaults to natural data order.",
+            "field is the numeric measure column to aggregate; defaults to primary_measure.",
+            "group restricts to a specific series slice first.",
+            "Result is a row list of (N - window + 1) rows, each carrying the windowed aggregate value.",
+            "Use rollingWindow INSTEAD of repeated filter+average chains when the question implies a moving / consecutive-N aggregate.",
+        ),
+    ),
+    OpContract(
+        op_name="monotonicRun",
+        model_cls=MonotonicRunOp,
+        required_fields=tuple(),
+        semantic_rules=(
+            "Finds strictly monotonic runs along an ordered axis.",
+            "direction='increasing'|'decreasing'; defaults to 'increasing'.",
+            "strict (default true) requires every step to be strictly increasing/decreasing.",
+            "mode controls the result shape: 'longest' (default) returns the longest run as a row list; 'firstBreak' returns a single row marking where the first qualifying run starts; 'all' returns every qualifying run flattened.",
+            "minLength filters out runs shorter than the given count (default 2).",
+            "orderField is the axis to scan along (typically a dimension such as 'Year'); defaults to natural data order.",
+            "field is the numeric measure compared between adjacent rows; defaults to primary_measure.",
+            "Use monotonicRun for 'longest period of decrease', 'year when X starts to decrease', 'consecutive years of increase' patterns.",
         ),
     ),
 )

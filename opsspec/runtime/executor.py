@@ -8,6 +8,7 @@ from ..core.models import ChartContext
 from ..specs.add import AddOp
 from ..specs.aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
+from ..specs.derived import MonotonicRunOp, RangeOp, RollingWindowOp
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
@@ -176,6 +177,12 @@ class OpsSpecExecutor:
             return self._op_scale(data, op)
         if isinstance(op, AddOp):
             return self._op_add(data, op)
+        if isinstance(op, RangeOp):
+            return self._op_range(data, op)
+        if isinstance(op, RollingWindowOp):
+            return self._op_rolling_window(data, op)
+        if isinstance(op, MonotonicRunOp):
+            return self._op_monotonic_run(data, op)
         raise NotImplementedError(f"Executor does not implement op: {op.op}")
 
     def _slice_by_group(self, data: List[DatumValue], group: Optional[str | List[str]]) -> List[DatumValue]:
@@ -678,4 +685,113 @@ class OpsSpecExecutor:
             return []
         result = float(left) + float(right)
         return self._make_scalar(value=result, label="__add__", group=op.group, measure=op.field)
+
+    def _op_range(self, data: List[DatumValue], op: RangeOp) -> List[DatumValue]:
+        """max − min spread; returns one scalar."""
+        sliced = self._slice_by_group(data, op.group)
+        if not sliced:
+            return self._make_scalar(
+                value=float("nan"), label="__range__", group=op.group, measure=op.field
+            )
+        values = [item.value for item in sliced]
+        spread = max(values) - min(values)
+        return self._make_scalar(
+            value=float(spread), label="__range__", group=op.group, measure=op.field
+        )
+
+    def _op_rolling_window(
+        self, data: List[DatumValue], op: RollingWindowOp
+    ) -> List[DatumValue]:
+        """Sliding-window aggregate; returns (N − window + 1) rows."""
+        sliced = self._slice_by_group(data, op.group)
+        window = int(op.window or 0)
+        if window < 1 or len(sliced) < window:
+            return []
+        aggregate_kind = op.aggregate or "avg"
+
+        if op.orderField:
+            ordered = sorted(sliced, key=lambda item: self._value_key(item, op.orderField))
+        else:
+            ordered = list(sliced)
+
+        measure_field = op.field or self.chart_context.primary_measure
+        category_field = (
+            op.orderField or self.chart_context.primary_dimension or "target"
+        )
+        out: List[DatumValue] = []
+        for i in range(len(ordered) - window + 1):
+            window_slice = ordered[i : i + window]
+            values = [item.value for item in window_slice]
+            agg_value = self._aggregate(values, aggregate_kind)
+            start_target = window_slice[0].target
+            end_target = window_slice[-1].target
+            label = f"{start_target}__{end_target}"
+            out.append(
+                DatumValue(
+                    category=category_field,
+                    measure=measure_field,
+                    target=label,
+                    group=op.group,
+                    value=float(agg_value),
+                    name=f"{aggregate_kind} of {start_target}–{end_target}",
+                )
+            )
+        return out
+
+    def _op_monotonic_run(
+        self, data: List[DatumValue], op: MonotonicRunOp
+    ) -> List[DatumValue]:
+        """Longest / firstBreak / all monotonic runs along an ordered axis."""
+        sliced = self._slice_by_group(data, op.group)
+        if not sliced:
+            return []
+        direction = op.direction or "increasing"
+        strict = True if op.strict is None else bool(op.strict)
+        mode = op.mode or "longest"
+        min_length = op.minLength if op.minLength is not None else 2
+
+        if op.orderField:
+            ordered = sorted(sliced, key=lambda item: self._value_key(item, op.orderField))
+        else:
+            ordered = list(sliced)
+
+        if len(ordered) < min_length:
+            return []
+
+        def cmp_ok(curr: float, prev: float) -> bool:
+            if direction == "increasing":
+                return curr > prev if strict else curr >= prev
+            return curr < prev if strict else curr <= prev
+
+        # Single sweep, partitioning into runs whenever the monotonic predicate breaks.
+        runs: List[Tuple[int, int]] = []
+        run_start = 0
+        for i in range(1, len(ordered)):
+            if not cmp_ok(ordered[i].value, ordered[i - 1].value):
+                length = i - run_start
+                if length >= min_length:
+                    runs.append((run_start, i - 1))
+                run_start = i
+        # Close the trailing run.
+        final_length = len(ordered) - run_start
+        if final_length >= min_length:
+            runs.append((run_start, len(ordered) - 1))
+
+        if not runs:
+            return []
+
+        if mode == "firstBreak":
+            start_idx, _ = runs[0]
+            return [ordered[start_idx]]
+
+        if mode == "all":
+            out: List[DatumValue] = []
+            for start, end in runs:
+                for idx in range(start, end + 1):
+                    out.append(ordered[idx])
+            return out
+
+        # mode == 'longest'
+        longest = max(runs, key=lambda r: r[1] - r[0])
+        return list(ordered[longest[0] : longest[1] + 1])
 

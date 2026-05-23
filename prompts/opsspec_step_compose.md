@@ -110,6 +110,23 @@ Critical rules:
      - absolute=true returns absolute magnitudes of adjacent-period differences. Use for "absolute year-over-year change", "size of period-to-period swings".
      - order="asc"|"desc" controls the ordering used to define adjacency.
    - For op="sum", use it only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.
+   - For op="range":
+     - Computes max − min of the working slice as a single scalar.
+     - field defaults to primary_measure; group restricts to one series before computing the spread.
+     - Use this instead of findExtremum(max)+findExtremum(min)+diff when the intent is "spread / variation / range".
+   - For op="rollingWindow":
+     - window is a required positive integer (e.g., window=3 for a 3-year window).
+     - aggregate is one of "sum"|"avg"|"min"|"max" (default "avg"). Pick "avg" for "moving average", "sum" for "consecutive N-year total", and so on.
+     - orderField is the sliding axis (typically the x-axis dimension such as "Year" / "Date"); omit only when natural data order is correct.
+     - field defaults to primary_measure; group restricts to one series first.
+     - Result is a row list of (N − window + 1) windows; chain with findExtremum/nth to pick the best/worst window.
+   - For op="monotonicRun":
+     - direction is "increasing" or "decreasing" (default "increasing").
+     - mode = "longest" (default; returns the longest qualifying run as a row list), "firstBreak" (single row marking where the first run starts), or "all" (every qualifying run flattened).
+     - strict defaults to true (every step must be strictly inc/dec).
+     - minLength filters out runs shorter than the count (default 2). Use minLength=3 for "more than 2 years" / "≥ 3 consecutive".
+     - orderField defines the scan axis (typically the x-axis dimension); field is the measure compared between adjacent rows.
+     - Pick mode="firstBreak" only when the question asks for the starting point of a trend; otherwise mode="longest" matches "longest period of decrease/increase".
 8) Planning quality checklist (must satisfy):
    - Decide whether this step's output is scalar or row-list and ensure it is needed by later steps.
    - If a scalar is needed from prior nodes, use "ref:nX" explicitly.

@@ -7,6 +7,7 @@ from pydantic import Field, TypeAdapter
 from .add import AddOp
 from .aggregate import AverageOp, CountOp, RetrieveValueOp, SumOp
 from .compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
+from .derived import MonotonicRunOp, RangeOp, RollingWindowOp
 from .filter import FilterOp
 from .range_sort_select import FindExtremumOp, NthOp, SortOp
 from .scale import ScaleOp
@@ -28,6 +29,9 @@ OperationSpec: TypeAlias = Annotated[
         CountOp,
         AddOp,
         ScaleOp,
+        RangeOp,
+        RollingWindowOp,
+        MonotonicRunOp,
     ],
     Field(discriminator="op"),
 ]
