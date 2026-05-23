@@ -95,6 +95,17 @@ Rules:
   - "second highest/second lowest" implies a "findExtremum" task with paramsHint.rank=2 and which="max|min".
   - "from year A to year B" implies a "filter" task with paramsHint.operator="between", paramsHint.value=[A,B].
   - "add/sum two computed values" implies an "add" operation task with paramsHint.targetA/targetB (usually refs at compose-time).
+  - "percent change" / "% increase" / "% decrease" / "increased by X%" implies a "diff" task with paramsHint.percent=true. (Sign direction is decided by Step-Compose from the question; do not pre-assign.)
+  - "ratio of A to B" / "A is N times B" / "X-fold" implies a "diff" task with paramsHint.mode="ratio". (Step-Compose fills targetA/targetB or groupA/groupB.)
+  - "share of" / "as a fraction of total" / "percent of total" implies a "diff" task with paramsHint.aggregate="percentage_of_total". Prefer this over a manual sum+diff chain when the explanation is "X's share of the total".
+  - "absolute difference" / "magnitude of the gap" / "how far apart" implies one of: (a) "diff" task with paramsHint.signed=false for two-target scalar comparison, or (b) "pairDiff" task with paramsHint.absolute=true when the comparison is per-key across two series. Do NOT emit lagDiff with "absolute" — LagDiffOp does not support that field.
+  - "leftmost" / "rightmost" / "first from the left/right" / "Nth from the right" implies an "nth" task with paramsHint.from="left" or "right". If the explanation also names a sort dimension ("leftmost when sorted by Year"), include paramsHint.orderField="<that field>".
+  - "sorted by X" / "in order of X" / "ordered by date/year/category" (where X is NOT the measure being aggregated) implies a "sort" task with paramsHint.orderField="<X field>". If the explanation says "sort by value/revenue/score" (the measure itself), use paramsHint.field=<measure> instead. The two are different: paramsHint.field is the value column to compare, paramsHint.orderField is an alternate key (typically a dimension) used to sort.
+  - "year-over-year change" / "month-over-month" / "compared to the previous period/year" implies a "lagDiff" task with paramsHint.order="asc" (chronological by default). Use paramsHint.order="desc" only when the explanation explicitly reverses the direction.
+  - "is the average of A greater than the average of B" / "compare the average of group A vs group B" (where A/B are series values) implies a "compareBool" task with paramsHint.aggregate="avg", paramsHint.groupA="A", paramsHint.groupB="B", and paramsHint.operator (e.g., ">"). Other slice-aggregate operators are "sum"/"min"/"max". If A/B are categorical values of a non-series field, emit a prerequisite filter task first instead of using this shortcut.
+  - "common to both X and Y" / "appear in both" / "in both A and B" / "shared between" / "intersection of two filter results" implies **two filter tasks** with appropriate sentenceIndex order. The second filter should narrow further on the first filter's result; Step-Compose connects them by putting the first filter's nodeId in the second filter's `inputs` at compose time. The chained filter then runs on the first filter's row result, naturally producing the intersection of the two target sets. **Never emit op="setOp"** — it has been removed from the operation set.
+  - "either A or B" / "in A or B" / "union of A and B" (same field, just combine values) implies a **single filter task** with paramsHint.include=[list of A values + B values]. Do not emit two filter tasks for this; do not emit op="setOp".
+  - "satisfying A and B" where A and B refer to **different fields** (e.g., "year=2020 AND region=APAC") also implies **two filter tasks chained via Step-Compose inputs**, identical to the same-field intersection pattern. Each filter narrows the dataset on its own field.
 - If the same op name appears in different parts of the explanation with different intent/arguments,
   create separate tasks with different taskIds.
 - Build tasks as a minimal executable plan:
@@ -111,6 +122,15 @@ Rules:
 - paramsHint must be FLAT (no nested objects). Keep it minimal.
 - Role tokens allowed in paramsHint values:
   - "@primary_dimension", "@primary_measure", "@series_field"
+- Optional paramsHint keys recognized by Step-Compose (FLAT, no nested objects):
+  - `percent` (bool — for `diff` task; emit only when explanation explicitly says "percent change" or "%")
+  - `mode` (string — only `"ratio"` is meaningful here; the default `"difference"` does not need to be emitted)
+  - `aggregate` (string — one of `"sum"`/`"avg"`/`"min"`/`"max"`/`"percentage_of_total"`; applies to `diff` and `compareBool` slice-aggregate forms)
+  - `absolute` (bool — for `diff` and `pairDiff` tasks only; do NOT emit for `lagDiff`)
+  - `from` (string — `"left"` or `"right"`, for `nth` tasks only)
+  - `orderField` (string — alternate sort key dimension, for `sort` and `nth` tasks)
+  - `order` (string — `"asc"` or `"desc"`, for `sort`/`nth`/`lagDiff` when explicitly directional)
+  - These are HINTS to help Step-Compose pick the right field configuration. Step-Compose may override them based on chart_context and the final-artifact intent. Emit them only when the explanation explicitly suggests them; never invent.
 - Series restriction:
   - Never represent series selection as a filter on the series field.
   - paramsHint.group is ONLY for series restriction on substantive ops.
@@ -131,6 +151,7 @@ Rules:
   - In membership mode, paramsHint.field may be any categorical field (except series_field).
   - If the explanation only says "filter only A and B" and A/B are series values (from series_domain),
     do NOT create a group-only filter task; attach the series restriction to other substantive tasks via paramsHint.group.
+- NEVER emit a task with op="setOp". The set-theoretic combination of two filter result sets (intersection or union) is expressed by chaining filters via meta.inputs at Step-Compose time, not by a dedicated op. setOp is no longer in the allowed operation set.
 - DATA RESOLUTION RULE: When a task requires selecting a specific subset of data items
   (e.g., "top N", "highest N", "lowest N", "bottom N", "most recent N", "largest N",
   "smallest N", or any phrase asking to pick N specific items by value ranking):

@@ -51,8 +51,7 @@ Critical rules:
 4) inputs:
    - inputs can include nodeIds that the operation depends on.
    - Every nodeId in inputs MUST already exist in available nodes.
-   - For setOp, inputs MUST contain at least two nodeIds.
-   - For non-setOp ops, do NOT use more than one "data parent" input. Prefer scalar refs for scalar dependencies.
+   - Each op may have at most ONE "data parent" input (the prior node whose row result becomes this op's dataset). Prefer scalar refs ("ref:nX") for additional scalar dependencies.
    - Prefer ops that consume already-produced intermediates and move one step closer to final output intent.
 5) Series restriction:
    - Do NOT filter on series_field directly.
@@ -70,7 +69,7 @@ Critical rules:
    - For row-order interval phrases like "from year A to year B", use comparison mode:
      operator="between", value=[A,B] (inclusive slice from first A to first B after A).
    - Never output a field-only filter. It will be rejected by validation.
-7) CompareBool / Nth / SetOp reminders:
+7) CompareBool / Nth reminders:
    - For op="findExtremum", use rank for k-th extremum (e.g., second highest -> which="max", rank=2).
    - For op="compareBool", you MUST include operator (e.g., ">", "<=", "==").
    - For op="add", you MUST include targetA and targetB (each should be scalar ref like "ref:nX" or numeric literal).
@@ -79,7 +78,6 @@ Critical rules:
    - For op="diffByValue": MUST include either `value` (numeric literal) or `targetValue` ("ref:nX")
      — exactly one of the two — defining the scalar reference V every chart row is compared against.
    - For op="nth", you MUST include n (integer or list of integers). (n is required.)
-   - For op="setOp", you MUST include fn ("intersection" or "union") AND inputs with at least two nodeIds.
    - For op="pairDiff", you MUST include by, groupA, and groupB.
    - For grouped/stacked comparisons where groupA/groupB come from a non-default field, include seriesField.
    - For op="sum", use it only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.

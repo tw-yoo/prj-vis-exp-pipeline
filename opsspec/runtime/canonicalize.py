@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ..core.models import ChartContext
 from ..specs.base import OpsMeta
-from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec, parse_operation_spec
 
 _REF_RE = re.compile(r"^ref:(n[0-9]+)$")
@@ -258,7 +257,7 @@ def canonicalize_ops_spec_groups(
     warnings.extend(rewrite_warnings)
 
     # Final normalization: ensure meta exists, fill missing ids (should not happen after rewrite),
-    # sort commutative setOp inputs, and strip None keys.
+    # and strip None keys.
     out: Dict[str, List[OperationSpec]] = {}
     for group_name, ops in rewritten_groups.items():
         normalized_ops: List[OperationSpec] = []
@@ -273,13 +272,6 @@ def canonicalize_ops_spec_groups(
             if not op.id:
                 op = op.model_copy(update={"id": node_id})
                 warnings.append(f'op.id missing; assigned "{node_id}"')
-
-            if isinstance(op, SetOp):
-                if meta.inputs:
-                    sorted_inputs = sorted(meta.inputs)
-                    if sorted_inputs != meta.inputs:
-                        meta = meta.model_copy(update={"inputs": sorted_inputs})
-                        warnings.append(f'setOp meta.inputs sorted for node "{node_id}"')
 
             op = op.model_copy(update={"meta": meta})
             op = _strip_none_fields(op)

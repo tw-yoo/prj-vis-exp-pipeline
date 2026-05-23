@@ -391,9 +391,6 @@ def validate_step_compose_output(
                 errors.append("filter comparison mode requires both operator and value.")
             if not has_inc_exc and not (has_op and has_val) and not has_group:
                 errors.append("filter requires one mode: include/exclude, operator+value, or group-only.")
-        if op_name == "setOp":
-            if len(parsed.inputs) < 2:
-                errors.append("setOp requires inputs with at least two nodeIds.")
         if op_name == "add":
             has_a = "targetA" in parsed.op_spec
             has_b = "targetB" in parsed.op_spec
@@ -429,8 +426,8 @@ def validate_step_compose_output(
     if missing_refs:
         errors.append(f'op_spec has scalar refs to unknown nodeIds: {missing_refs}')
 
-    # Data-parent constraint (executor semantics): only one non-scalar data parent except setOp.
-    if isinstance(op_name, str) and op_name and op_name != "setOp":
+    # Data-parent constraint (executor semantics): only one non-scalar data parent.
+    if isinstance(op_name, str) and op_name:
         data_parents = [nid for nid in (parsed.inputs or []) if nid not in scalar_deps]
         if len(data_parents) > 1:
             errors.append(

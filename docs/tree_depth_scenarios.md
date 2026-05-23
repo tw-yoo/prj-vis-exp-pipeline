@@ -57,10 +57,10 @@ Final grammar (groups map):
 ## Depth 3 Scenario
 
 Question:
-- Which months have above-average `count` in both `rain` and `sun`?
+- How many months have above-average `count` in `rain`?
 
 Explanation:
-- Compute the average of `count` for `rain` and for `sun` across all months. Filter months where each is above its own average. Take the intersection of the two month sets.
+- Compute the average of `count` for `rain` across all months. Filter months where the value is above that average. Count the surviving months.
 
 Final grammar (groups map):
 
@@ -73,7 +73,9 @@ Final grammar (groups map):
       "meta": { "nodeId": "n1", "inputs": [] },
       "field": "count",
       "group": "rain"
-    },
+    }
+  ],
+  "ops2": [
     {
       "op": "filter",
       "id": "n2",
@@ -84,30 +86,12 @@ Final grammar (groups map):
       "group": "rain"
     }
   ],
-  "ops2": [
+  "ops3": [
     {
-      "op": "average",
+      "op": "count",
       "id": "n3",
-      "meta": { "nodeId": "n3", "inputs": [] },
-      "field": "count",
-      "group": "sun"
-    },
-    {
-      "op": "filter",
-      "id": "n4",
-      "meta": { "nodeId": "n4", "inputs": ["n3"] },
-      "field": "count",
-      "operator": ">",
-      "value": "ref:n3",
-      "group": "sun"
-    }
-  ],
-  "last": [
-    {
-      "op": "setOp",
-      "id": "n5",
-      "meta": { "nodeId": "n5", "inputs": ["n2", "n4"] },
-      "fn": "intersection"
+      "meta": { "nodeId": "n3", "inputs": ["n2"] },
+      "group": "rain"
     }
   ]
 }

@@ -26,7 +26,6 @@ _OP_REQUIRED_FIELDS: Dict[str, List[str]] = {
     "pairDiff": ["by", "groupA", "groupB"],
     "add": ["targetA", "targetB"],
     "scale": ["target", "factor"],
-    "setOp": ["fn"],
     "compareBool": ["operator"],
 }
 

@@ -455,29 +455,24 @@ class RecursivePipelineTest(unittest.TestCase):
         self.assertEqual(op.op, "findExtremum")
         self.assertEqual(op.rank, 2)
 
-    def test_setop_requires_two_inputs(self) -> None:
+    def test_chained_filter_pipeline(self) -> None:
+        # Replacement for the removed setOp pipeline test: two filters chained
+        # via meta.inputs express the intersection of two include sets.
         inventory_payload = {
             "tasks": [
                 {
                     "taskId": "o1",
                     "op": "filter",
                     "sentenceIndex": 1,
-                    "mention": "Broadcasting in 2016/17",
-                    "paramsHint": {"field": "@primary_dimension", "include": ["2016/17"], "group": "Broadcasting"},
+                    "mention": "Broadcasting seasons of interest",
+                    "paramsHint": {"field": "@primary_dimension", "include": ["2016/17", "2017/18"]},
                 },
                 {
                     "taskId": "o2",
                     "op": "filter",
-                    "sentenceIndex": 1,
-                    "mention": "Commercial in 2016/17",
-                    "paramsHint": {"field": "@primary_dimension", "include": ["2016/17"], "group": "Commercial"},
-                },
-                {
-                    "taskId": "o3",
-                    "op": "setOp",
                     "sentenceIndex": 2,
-                    "mention": "intersection of those seasons",
-                    "paramsHint": {"fn": "intersection"},
+                    "mention": "narrow to 2017/18",
+                    "paramsHint": {"field": "@primary_dimension", "include": ["2017/18"]},
                 },
             ],
             "warnings": [],
@@ -485,18 +480,13 @@ class RecursivePipelineTest(unittest.TestCase):
         step_payloads = [
             {
                 "pickTaskId": "o1",
-                "op_spec": {"op": "filter", "field": "@primary_dimension", "include": ["2016/17"], "group": "Broadcasting"},
+                "op_spec": {"op": "filter", "field": "@primary_dimension", "include": ["2016/17", "2017/18"]},
                 "inputs": [],
             },
             {
                 "pickTaskId": "o2",
-                "op_spec": {"op": "filter", "field": "@primary_dimension", "include": ["2016/17"], "group": "Commercial"},
-                "inputs": [],
-            },
-            {
-                "pickTaskId": "o3",
-                "op_spec": {"op": "setOp", "fn": "intersection"},
-                "inputs": ["n1", "n2"],
+                "op_spec": {"op": "filter", "field": "@primary_dimension", "include": ["2017/18"]},
+                "inputs": ["n1"],
             },
         ]
 
@@ -520,13 +510,13 @@ class RecursivePipelineTest(unittest.TestCase):
 
         self.assertIn("ops", result.ops_spec)
         self.assertIn("ops2", result.ops_spec)
-        self.assertEqual(len(result.ops_spec["ops"]), 2)
+        self.assertEqual(len(result.ops_spec["ops"]), 1)
         self.assertEqual(len(result.ops_spec["ops2"]), 1)
 
-        set_op = result.ops_spec["ops2"][0]
-        self.assertEqual(set_op.op, "setOp")
-        self.assertEqual(set_op.meta.nodeId, "n3")
-        self.assertEqual(set(set_op.meta.inputs or []), {"n1", "n2"})
+        chained = result.ops_spec["ops2"][0]
+        self.assertEqual(chained.op, "filter")
+        self.assertEqual(chained.meta.nodeId, "n2")
+        self.assertEqual(list(chained.meta.inputs or []), ["n1"])
 
     def test_step_compose_strict_retry(self) -> None:
         inventory_payload = {

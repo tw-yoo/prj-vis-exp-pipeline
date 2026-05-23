@@ -4,7 +4,6 @@ from typing import Dict, List, Set, Tuple
 
 from ..runtime.artifacts import extract_scalar_ref_deps
 from ..specs.base import OpsMeta
-from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
 
 
@@ -15,7 +14,6 @@ def normalize_meta_inputs(
     Minimal, deterministic normalization without rewriting nodeIds:
     - meta.inputs includes explicit inputs + scalar ref deps found in op params
     - remove self refs, dedupe + sort
-    - for setOp, sort meta.inputs (commutative)
     """
     warnings: List[str] = []
     out: Dict[str, List[OperationSpec]] = {}
@@ -40,12 +38,6 @@ def normalize_meta_inputs(
             if sorted(meta.inputs or []) != new_inputs:
                 meta = meta.model_copy(update={"inputs": new_inputs})
                 warnings.append(f'meta.inputs normalized for node "{node_id}"')
-
-            if isinstance(op, SetOp) and meta.inputs:
-                sorted_inputs = sorted(meta.inputs)
-                if sorted_inputs != meta.inputs:
-                    meta = meta.model_copy(update={"inputs": sorted_inputs})
-                    warnings.append(f'setOp meta.inputs sorted for node "{node_id}"')
 
             updated = op.model_copy(update={"meta": meta})
             normalized_ops.append(updated)

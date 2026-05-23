@@ -10,7 +10,6 @@ from .compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, PairDiffOp
 from .filter import FilterOp
 from .range_sort_select import FindExtremumOp, NthOp, SortOp
 from .scale import ScaleOp
-from .set_op import SetOp
 
 OperationSpec: TypeAlias = Annotated[
     Union[
@@ -29,7 +28,6 @@ OperationSpec: TypeAlias = Annotated[
         CountOp,
         AddOp,
         ScaleOp,
-        SetOp,
     ],
     Field(discriminator="op"),
 ]

@@ -5,7 +5,6 @@ from .compare import CompareBoolOp, CompareOp, DiffByValueOp, DiffOp, LagDiffOp,
 from .filter import FilterOp
 from .range_sort_select import FindExtremumOp, NthOp, SortOp
 from .scale import ScaleOp
-from .set_op import SetOp
 from .union import OperationSpec, parse_operation_spec
 
 __all__ = [
@@ -27,7 +26,6 @@ __all__ = [
     "PairDiffOp",
     "RetrieveValueOp",
     "ScaleOp",
-    "SetOp",
     "SortOp",
     "SumOp",
     "parse_operation_spec",

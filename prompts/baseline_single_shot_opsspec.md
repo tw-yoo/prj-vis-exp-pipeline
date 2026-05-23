@@ -150,7 +150,6 @@ Specific operation reminders:
 - For op="diffByValue": MUST include either `value` (numeric literal) or `targetValue` ("ref:nX")
   — exactly one of the two — to define the scalar reference V every chart row is compared against.
 - For op="nth": MUST include n (integer or list of integers).
-- For op="setOp": MUST include fn ("intersection" or "union"). meta.inputs must have at least two nodeIds.
 - For op="pairDiff": MUST include by, groupA, and groupB.
   For grouped/stacked comparisons where groupA/groupB come from a non-default field, include seriesField.
 - For op="sum": use only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.

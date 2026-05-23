@@ -68,8 +68,45 @@ _KEYWORD_TO_OPS: Dict[str, Tuple[str, ...]] = {
     "double": ("scale",),
     "pair": ("pairDiff",),
     "lag": ("lagDiff",),
-    "intersection": ("setOp",),
-    "union": ("setOp",),
+    # "intersection"/"union" are no longer mapped to a dedicated op; chained filters
+    # (or a single filter with combined include list) express the same outcome.
+    "common to both": ("filter",),
+    "in both": ("filter",),
+    "shared between": ("filter",),
+    "appear in both": ("filter",),
+    "either a or b": ("filter",),
+    "intersection of": ("filter",),
+    # Expanded-field patterns (diff.percent / mode / aggregate)
+    "ratio": ("diff",),
+    "times as": ("diff",),
+    "fold": ("diff", "scale"),
+    "percent change": ("diff",),
+    "percentage change": ("diff",),
+    "% change": ("diff",),
+    "% increase": ("diff",),
+    "% decrease": ("diff",),
+    "share of": ("diff",),
+    "fraction of": ("diff",),
+    "percent of total": ("diff",),
+    # nth.from / orderField patterns
+    "leftmost": ("nth",),
+    "rightmost": ("nth",),
+    "from the left": ("nth",),
+    "from the right": ("nth",),
+    # sort.orderField patterns
+    "sorted by": ("sort",),
+    "in order of": ("sort",),
+    "ordered by": ("sort",),
+    "chronological": ("sort", "lagDiff"),
+    # lagDiff chronological phrases
+    "year-over-year": ("lagDiff",),
+    "yoy": ("lagDiff",),
+    "month-over-month": ("lagDiff",),
+    "previous period": ("lagDiff",),
+    "previous year": ("lagDiff",),
+    # pairDiff.absolute / diff signed=false
+    "absolute difference": ("diff", "pairDiff"),
+    "magnitude of": ("diff", "pairDiff"),
 }
 
 
@@ -196,7 +233,7 @@ def tune_few_shot_budget(
             step_max_chars=min(12000, budget.step_max_chars + 1200),
             step_steps_per_example=min(6, budget.step_steps_per_example + 1),
         )
-    if {"pairDiff", "lagDiff", "setOp"}.intersection(target_ops):
+    if {"pairDiff", "lagDiff"}.intersection(target_ops):
         budget = FewShotBudget(
             inventory_max_examples=min(8, budget.inventory_max_examples + 1),
             inventory_max_chars=min(12000, budget.inventory_max_chars + 1000),
@@ -632,7 +669,7 @@ def _format_text_to_image_example(
         elements: List[str] = []
         for node in groups[si]:
             op = node.get("op", "")
-            if op in ("filter", "findExtremum", "retrieveValue", "nth", "setOp"):
+            if op in ("filter", "findExtremum", "retrieveValue", "nth"):
                 elements.append(f"highlight relevant data elements for {op}")
             elif op in ("average", "sum", "count"):
                 elements.append(f"add reference line and text label for {op} result")

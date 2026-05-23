@@ -11,7 +11,6 @@ from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, Pai
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
-from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
 from ..core.utils import to_float
 
@@ -177,8 +176,6 @@ class OpsSpecExecutor:
             return self._op_scale(data, op)
         if isinstance(op, AddOp):
             return self._op_add(data, op)
-        if isinstance(op, SetOp):
-            return self._op_set_op(data, op)
         raise NotImplementedError(f"Executor does not implement op: {op.op}")
 
     def _slice_by_group(self, data: List[DatumValue], group: Optional[str | List[str]]) -> List[DatumValue]:
@@ -636,28 +633,3 @@ class OpsSpecExecutor:
         result = float(left) + float(right)
         return self._make_scalar(value=result, label="__add__", group=op.group, measure=op.field)
 
-    def _op_set_op(self, data: List[DatumValue], op: SetOp) -> List[DatumValue]:
-        _ = data
-        inputs = op.meta.inputs if op.meta and op.meta.inputs else []
-        if len(inputs) < 2:
-            return []
-        collections: List[List[DatumValue]] = [self.runtime.get(node_id, []) for node_id in inputs]
-        if any(not coll for coll in collections):
-            return []
-        target_sets = [set(item.target for item in coll) for coll in collections]
-        if op.fn == "intersection":
-            merged = set.intersection(*target_sets)
-        else:
-            merged = set.union(*target_sets)
-        ordered = sorted(merged)
-        return [
-            DatumValue(
-                category=self.chart_context.primary_dimension,
-                measure=self.chart_context.primary_measure,
-                target=target,
-                group=op.group,
-                value=1.0,
-                name=target,
-            )
-            for target in ordered
-        ]

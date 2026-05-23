@@ -11,7 +11,6 @@ from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, Pai
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
-from ..specs.set_op import SetOp
 
 COMMON_FIELDS: Tuple[str, ...] = ("op", "id", "meta", "chartId")
 ALL_CHART_FAMILIES: Tuple[str, ...] = (
@@ -238,21 +237,10 @@ _OP_SEQUENCE: Tuple[OpContract, ...] = (
             "factor must be a numeric multiplier (e.g., 2.0 for doubling).",
         ),
     ),
-    OpContract(
-        op_name="setOp",
-        model_cls=SetOp,
-        required_fields=("fn",),
-        semantic_rules=(
-            "fn must be 'intersection' or 'union'.",
-            "inputs must contain at least two nodeIds (passed via meta.inputs, not op_spec).",
-            "intersection returns targets present in ALL input node results.",
-            "union returns targets present in ANY input node result.",
-        ),
-    ),
 )
 
 OP_REGISTRY: Dict[str, OpContract] = {contract.op_name: contract for contract in _OP_SEQUENCE}
-LEGACY_NON_DRAW_OPS: Tuple[str, ...] = tuple(contract.op_name for contract in _OP_SEQUENCE if contract.op_name != "setOp")
+LEGACY_NON_DRAW_OPS: Tuple[str, ...] = tuple(contract.op_name for contract in _OP_SEQUENCE)
 ALLOWED_OPS: Tuple[str, ...] = tuple(contract.op_name for contract in _OP_SEQUENCE)
 
 def list_contracts() -> Tuple[OpContract, ...]:
@@ -295,7 +283,7 @@ def build_ops_contract_for_prompt(chart_context: Optional[ChartContext] = None) 
     return {
         "chart_family": chart_family,
         "allowed_ops": [contract.op_name for contract in active_contracts],
-        "legacy_non_draw_ops": [contract.op_name for contract in active_contracts if contract.op_name != "setOp"],
+        "legacy_non_draw_ops": [contract.op_name for contract in active_contracts],
         "unavailable_ops": {
             contract.op_name: f'not allowed for chart_family="{chart_family}"'
             for contract in _OP_SEQUENCE

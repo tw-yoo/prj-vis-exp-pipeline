@@ -11,9 +11,6 @@ from opsspec.specs.union import OperationSpec
 
 from .chart_type import ChartKind, derive_chart_kind
 from .models import (
-    DrawBandOp,
-    DrawBandSpec,
-    DrawBandStyle,
     DrawClearOp,
     DrawGroupFilterSpec,
     DrawGroupedFilterGroupsOp,
@@ -53,7 +50,6 @@ HIGHLIGHT_OPS: Set[str] = {
     "filter",
     "findExtremum",
     "nth",
-    "setOp",
     "lagDiff",
     "pairDiff",
 }
@@ -540,35 +536,6 @@ def build_draw_ops_spec(
                                     meta=meta,
                                     select=DrawSelect(keys=targets),
                                     style=DrawStyle(color="#ef4444", opacity=1.0),
-                                ),
-                                chart_id=None,
-                                extra_inputs=[],
-                            )
-                        )
-
-            if op_name == "setOp":
-                targets = _unique_targets(result_rows)
-                if targets:
-                    domain = primary_domain if primary_domain else targets
-                    runs = _contiguous_runs(targets, domain)
-                    for run in runs:
-                        if len(run) < 2:
-                            continue
-                        draw_ops.append(
-                            _with_draw_context(
-                                DrawBandOp(
-                                    meta=meta,
-                                    band=DrawBandSpec(
-                                        axis="x",
-                                        range=[run[0], run[-1]],
-                                        label=getattr(op, "fn", "set"),
-                                        style=DrawBandStyle(
-                                            fill="rgba(59,130,246,0.16)",
-                                            stroke="#3b82f6",
-                                            strokeWidth=1.5,
-                                            opacity=1.0,
-                                        ),
-                                    ),
                                 ),
                                 chart_id=None,
                                 extra_inputs=[],

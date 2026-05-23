@@ -11,7 +11,6 @@ from ..specs.compare import CompareBoolOp, DiffByValueOp, DiffOp, LagDiffOp, Pai
 from ..specs.filter import FilterOp
 from ..specs.range_sort_select import FindExtremumOp, NthOp, SortOp
 from ..specs.scale import ScaleOp
-from ..specs.set_op import SetOp
 from ..specs.union import OperationSpec
 from ..core.types import PrimitiveValue
 from ..core.utils import to_float
@@ -388,11 +387,6 @@ def validate_operation(
         updated = updated.model_copy(update={"group": normalized_group})
         _validate_sum_group_domain(normalized_group, chart_context)
         return updated, warnings
-
-    if isinstance(op, SetOp):
-        if op.meta is None or len(op.meta.inputs) < 2:
-            raise ValueError('setOp requires meta.inputs with at least two nodeIds')
-        return op, warnings
 
     if isinstance(op, DiffOp):
         if op.targetA is None:

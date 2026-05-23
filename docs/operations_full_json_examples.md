@@ -400,15 +400,3 @@ Grouped-bar example (City-wise 2025-2010):
 }
 ```
 
-## setOp
-
-```json
-{
-  "op": "setOp",
-  "id": "n17",
-  "chartId": "chart-1",
-  "meta": { "nodeId": "n17", "inputs": ["n2", "n4"], "sentenceIndex": 6 },
-  "fn": "intersection",
-  "group": "result"
-}
-```

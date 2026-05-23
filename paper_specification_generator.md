@@ -141,17 +141,7 @@ It must follow the injected `ops_contract_json`:
 { "value": "ref:n1" }
 ```
 
-### 5.3 `setOp` minimal requirements
-**Valid**
-```json
-{
-  "pickTaskId": "o3",
-  "op_spec": { "op": "setOp", "fn": "intersection" },
-  "inputs": ["n1", "n2"]
-}
-```
-
-### 5.4 Filter mode exclusivity
+### 5.3 Filter mode exclusivity
 Valid modes (exactly one):
 1. membership: `include` and/or `exclude`
 2. comparison: `operator` + `value`
@@ -204,7 +194,7 @@ Required structure:
 Draw plan is generated **after** scheduled OpsSpec and is not authored directly by Module 1/2.
 
 Important mapping expectations:
-- target-selection ops (`filter`, `findExtremum`, `setOp`, `nth`, etc.) → `highlight`
+- target-selection ops (`filter`, `findExtremum`, `nth`, etc.) → `highlight`
 - scalar ops (`average`, `diff`, `count`, `compare*`, `add`, `scale`) → horizontal line + text
 - `diff` with scalar-ref-only context may branch to `scalar-panel`
 - scoped series ops in stacked/grouped bars may emit group filter pre/post wrappers

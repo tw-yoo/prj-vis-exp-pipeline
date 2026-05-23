@@ -201,12 +201,11 @@
 
 | Data op | 기본 draw action | 추가 규칙 |
 | --- | --- | --- |
-| `retrieveValue`, `filter`, `findExtremum`, `nth`, `lagDiff`, `setOp`, `compare`, `pairDiff` | `highlight` | result의 target key 기준 |
+| `retrieveValue`, `filter`, `findExtremum`, `nth`, `lagDiff`, `compare`, `pairDiff` | `highlight` | result의 target key 기준 |
 | `sum` | `sum` | scalar sum annotation |
 | `average`, `count`, `compareBool`, `add`, `scale` | `line` + `text` | 수평선 + scalar label |
 | `compare`, `diff` | `line(mode=connect)` | target selector가 있으면 pair/connectBy 사용 |
 | `pairDiff` | `line(mode=connect)` | groupA/groupB를 connectBy(start/end series)로 연결 |
-| `setOp` | `highlight` + `band` | 선택 target run(연속 구간)에 band 추가 |
 
 ### 8.2 `diff`의 scalar-panel 분기
 
@@ -239,7 +238,7 @@
   - 따라서 “상단 라벨” 기본값은 `y=0.92`를 사용
 
 참고:
-- TS 런타임은 `setOp/pairDiff/add/scale` data op를 정식 지원합니다.
+- TS 런타임은 `pairDiff/add/scale` data op를 정식 지원합니다.
 
 ---
 

@@ -38,10 +38,12 @@
     ],
     "ops3": [
       {
-        "op": "setOp",
+        "op": "filter",
         "id": "n5",
-        "meta": { "nodeId": "n5", "inputs": ["n3", "n4"], "sentenceIndex": 3 },
-        "fn": "intersection"
+        "meta": { "nodeId": "n5", "inputs": ["n3"], "sentenceIndex": 3 },
+        "field": "count",
+        "operator": ">",
+        "value": 0
       }
     ]
   },
