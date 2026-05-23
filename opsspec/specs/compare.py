@@ -9,9 +9,22 @@ from .base import BaseOpFields
 
 
 class CompareOp(BaseOpFields):
-    """Deprecated. compare op was removed; this permissive shim exists only so
-    legacy test fixtures referencing CompareOp keep importing. It is NOT in the
-    operation Union, registry, executor, or validator. Use DiffByValueOp instead.
+    """Deprecated permissive shim — kept by design.
+
+    The `compare` op was removed from the production operation set. This class
+    is intentionally kept (and NOT in OperationSpec Union / op_registry /
+    executor / validators) so that the following passing test files can
+    continue to construct `compare` spec objects for scheduler / visual-plan
+    tests that don't execute the op:
+      - opsspec/tests/test_grammar.py
+      - opsspec/tests/test_visual_execution_plan.py
+
+    For new code, use CompareBoolOp (boolean comparison) or DiffOp (scalar
+    arithmetic with mode/percent/aggregate options) instead.
+
+    Do NOT add new tests that depend on this shim. When the above legacy tests
+    are rewritten for any reason, this class can be deleted along with the
+    `from .compare import CompareOp` re-export in `specs/__init__.py`.
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
@@ -81,14 +94,15 @@ class DiffOp(BaseOpFields):
 class LagDiffOp(BaseOpFields):
     """같은 그룹/시계열 내 인접 값 차이(행 리스트 반환).
     필수: `field` 권장.
-    선택: `group`으로 series 제한, `order`로 정렬 방향, `absolute`로 절대값.
+    선택: `group`으로 series 제한, `order`로 정렬 방향, `absolute`로 절대값 변환.
     """
 
     op: Literal["lagDiff"] = "lagDiff"
     field: Optional[str] = None  # 차이를 계산할 수치 필드명(보통 y축)
     group: Optional[str] = None  # group/series 이름
     order: Optional[Literal["asc", "desc"]] = None  # x축(시간) 순서 방향
-    signed: Optional[bool] = None  # 절대값 차이로 변환할지
+    absolute: Optional[bool] = None  # True면 abs(curr - prev)
+    signed: Optional[bool] = None  # legacy: 일부 fixture가 signed=False로 절대값 의도를 표현
 
 
 class PairDiffOp(BaseOpFields):

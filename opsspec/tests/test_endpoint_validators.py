@@ -39,6 +39,10 @@ class EndpointValidatorsTest(unittest.TestCase):
         self.assertIn("ops", report["groups"])
 
     def test_validate_ops_spec_with_diagnostics_reports_ref_paths(self) -> None:
+        # Two valid scalar nodes (n1, n2), then a diff that semantically passes
+        # (2 inputs supplied) but whose meta.inputs and one scalar ref point to
+        # an unknown nodeId n99 — exercising both unknown_input_node and
+        # unknown_scalar_ref error codes.
         raw_groups = {
             "ops": [
                 {
@@ -48,9 +52,16 @@ class EndpointValidatorsTest(unittest.TestCase):
                     "field": "Revenue_Million_Euros",
                 },
                 {
-                    "op": "diff",
+                    "op": "average",
                     "id": "n2",
-                    "meta": {"nodeId": "n2", "inputs": ["n99"], "sentenceIndex": 1},
+                    "meta": {"nodeId": "n2", "inputs": [], "sentenceIndex": 1},
+                    "field": "Revenue_Million_Euros",
+                    "group": "Commercial",
+                },
+                {
+                    "op": "diff",
+                    "id": "n3",
+                    "meta": {"nodeId": "n3", "inputs": ["n1", "n99"], "sentenceIndex": 1},
                     "field": "Revenue_Million_Euros",
                     "targetA": "ref:n1",
                     "targetB": "ref:n99",

@@ -128,6 +128,10 @@ Series restriction (CRITICAL):
     { "op": "filter", "group": ["A","B"] }
 - For average/count/findExtremum/sort/retrieveValue/lagDiff/nth,
   group MUST be a single series value string.
+- retrieveValue supports `targetAxis: "x" | "y"` (default "x").
+  Use "y" ONLY when the explanation explicitly asks for an x-axis category given a numeric y value
+  ("which year had value X" / "어느 카테고리가 60을 기록했는가" / "find the country with rating 60").
+  In that case, `target` MUST be a numeric value and `field` SHOULD name the measure being matched.
 - Never use sentence-layer tokens ("ops", "ops2") as group values.
 - Never put dimension subsets (e.g., years like ["2010","2013"]) into group.
 
@@ -141,17 +145,39 @@ Filter mode selection:
   operator="between", value=[A,B] (inclusive slice from first A to first B after A).
 - Never output a field-only filter. It will be rejected by validation.
 
-Specific operation reminders:
+Specific operation reminders (extended-field semantics):
 - For op="findExtremum": use rank for k-th extremum (e.g., second highest → which="max", rank=2).
-- For op="compareBool": MUST include operator (e.g., ">", "<=", "==").
+- For op="compareBool":
+  - MUST include operator (e.g., ">", "<=", "==").
+  - For slice-aggregate comparisons (e.g., "is the average of A higher than the average of B"), set groupA/groupB + aggregate ("sum"|"avg"|"min"|"max") and use field as the measure being aggregated. targetA/targetB are optional in this mode.
 - For op="add": MUST include targetA and targetB (each scalar ref "ref:nX" or numeric literal).
-- For op="diff": MUST include targetA and targetB (both must be scalar refs "ref:nX").
-  meta.inputs MUST contain exactly 2 nodeIds matching the referenced nodes.
+- For op="diff":
+  - MUST include targetA and targetB (both must be scalar refs "ref:nX" or dimension labels).
+  - meta.inputs MUST contain exactly 2 nodeIds matching the referenced nodes when scalar refs are used.
+  - Extended fields:
+    - percent=true → percentage change (targetA - targetB) / targetB * 100. Use for "% increase", "% decrease", "percent change".
+    - mode="ratio" → returns targetA / targetB (multiplied by scale; default scale is 1.0, or 100 when percent=true). Use for "ratio of A to B", "N times".
+    - aggregate ("sum"|"avg"|"min"|"max"|"percentage_of_total") → applies when targetA/targetB resolve to multi-row slices: each slice is aggregated by this method before the diff. "percentage_of_total" returns targetA as a share of the total.
+    - groupA/groupB → series slices when targetA/targetB are dimension labels and the chart has a series field. Otherwise use a single `group`.
+    - precision → rounds final scalar; scale → multiplies final scalar by that factor.
 - For op="diffByValue": MUST include either `value` (numeric literal) or `targetValue` ("ref:nX")
   — exactly one of the two — to define the scalar reference V every chart row is compared against.
-- For op="nth": MUST include n (integer or list of integers).
-- For op="pairDiff": MUST include by, groupA, and groupB.
-  For grouped/stacked comparisons where groupA/groupB come from a non-default field, include seriesField.
+- For op="nth":
+  - n is REQUIRED (integer or list of integers).
+  - from="left"|"right" picks direction; "right" for positional-from-end phrases like "2nd from the right" or "the most recent two".
+  - orderField (alternate sort key dimension) defines the ordering; combine with order="asc"|"desc" when explicit. If absent, nth assumes the upstream node is already sorted.
+- For op="sort":
+  - field is the measure column being compared (defaults to primary_measure when omitted).
+  - orderField is an alternate sort key, typically a dimension (e.g., "Year"). Use orderField when the explanation says "sort by Year/Date/Category" (not by the measure). If both are given, orderField wins for ordering.
+  - order="asc"|"desc" defaults to "asc" when omitted.
+- For op="pairDiff":
+  - MUST include by, groupA, and groupB.
+  - For grouped/stacked comparisons where groupA/groupB come from a non-default field, include seriesField.
+  - absolute=true returns abs(groupA - groupB) per key (default keeps sign).
+  - precision rounds each per-key delta.
+- For op="lagDiff":
+  - absolute=true returns absolute magnitudes of adjacent-period differences. Use for "absolute year-over-year change", "size of period-to-period swings".
+  - order="asc"|"desc" controls the ordering used to define adjacency.
 - For op="sum": use only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.
 
 DATA RESOLUTION RULE:

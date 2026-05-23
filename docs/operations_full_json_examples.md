@@ -32,6 +32,8 @@ Notes:
 
 ## retrieveValue
 
+Default forward (x → y): `target`이 x축 카테고리 라벨, 매칭되는 y 값을 반환.
+
 ```json
 {
   "op": "retrieveValue",
@@ -40,6 +42,21 @@ Notes:
   "meta": { "nodeId": "n1", "inputs": [], "sentenceIndex": 1 },
   "field": "Revenue_Million_Euros",
   "target": ["2016/17", "2017/18"],
+  "group": "Broadcasting"
+}
+```
+
+Reverse lookup (y → x): `targetAxis: "y"`이면 `target`을 numeric y값으로 보고, 그 값을 가진 x 카테고리를 찾음.
+
+```json
+{
+  "op": "retrieveValue",
+  "id": "n1",
+  "chartId": "chart-1",
+  "meta": { "nodeId": "n1", "inputs": [], "sentenceIndex": 1 },
+  "field": "Revenue_Million_Euros",
+  "target": 150,
+  "targetAxis": "y",
   "group": "Broadcasting"
 }
 ```

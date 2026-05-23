@@ -306,12 +306,55 @@ class OpsSpecExecutor:
 
     def _op_retrieve_value(self, data: List[DatumValue], op: RetrieveValueOp) -> List[DatumValue]:
         target = op.target
+        # Reverse lookup: target is a numeric y value; return rows whose value
+        # equals target (constrained to field/group like the forward path).
+        if op.targetAxis == "y":
+            if isinstance(target, list):
+                out: List[DatumValue] = []
+                seen_ids: set = set()
+                for entry in target:
+                    for row in self._slice_by_measure_value(data, entry, op.group, op.field):
+                        key = row.id or f"{row.target}|{row.group}|{row.measure}"
+                        if key in seen_ids:
+                            continue
+                        seen_ids.add(key)
+                        out.append(row)
+                return out
+            return self._slice_by_measure_value(data, target, op.group, op.field)
+        # Forward (default): target is an x-axis category label.
         if isinstance(target, list):
-            out: List[DatumValue] = []
+            out2: List[DatumValue] = []
             for entry in target:
-                out.extend(self._slice_for_selector(data, entry, op.group, op.field))
-            return out
+                out2.extend(self._slice_for_selector(data, entry, op.group, op.field))
+            return out2
         return self._slice_for_selector(data, target, op.group, op.field)
+
+    def _slice_by_measure_value(
+        self,
+        data: List[DatumValue],
+        target: Any,
+        group: Optional[str],
+        field: Optional[str],
+    ) -> List[DatumValue]:
+        """Reverse-lookup helper: rows whose `value` equals numeric `target`.
+        Group/field constraints mirror the forward `_slice_for_selector` path.
+        """
+        try:
+            numeric_target = float(target)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return []
+        sliced = self._slice_by_group(data, group)
+        if field is not None and field != "value":
+            sliced = [item for item in sliced if item.measure == field]
+        out: List[DatumValue] = []
+        for item in sliced:
+            try:
+                v = float(item.value)
+            except (TypeError, ValueError):
+                continue
+            if v == numeric_target:
+                out.append(item)
+        return out
 
     def _op_filter(self, data: List[DatumValue], op: FilterOp) -> List[DatumValue]:
         sliced = self._slice_by_group(data, op.group)
@@ -522,11 +565,14 @@ class OpsSpecExecutor:
         reverse = op.order == "desc"
         ordered = sorted(sliced, key=lambda item: item.target, reverse=reverse)
         out: List[DatumValue] = []
+        # Accept either `absolute=true` (preferred) or legacy `signed=false`
+        # (older fixtures expressed absolute-magnitude intent this way).
+        take_abs = bool(op.absolute) or op.signed is False
         for idx in range(1, len(ordered)):
             prev = ordered[idx - 1]
             curr = ordered[idx]
             delta = curr.value - prev.value
-            if op.absolute:
+            if take_abs:
                 delta = abs(delta)
             out.append(
                 DatumValue(

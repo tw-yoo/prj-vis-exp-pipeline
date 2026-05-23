@@ -98,7 +98,7 @@ Rules:
   - "percent change" / "% increase" / "% decrease" / "increased by X%" implies a "diff" task with paramsHint.percent=true. (Sign direction is decided by Step-Compose from the question; do not pre-assign.)
   - "ratio of A to B" / "A is N times B" / "X-fold" implies a "diff" task with paramsHint.mode="ratio". (Step-Compose fills targetA/targetB or groupA/groupB.)
   - "share of" / "as a fraction of total" / "percent of total" implies a "diff" task with paramsHint.aggregate="percentage_of_total". Prefer this over a manual sum+diff chain when the explanation is "X's share of the total".
-  - "absolute difference" / "magnitude of the gap" / "how far apart" implies one of: (a) "diff" task with paramsHint.signed=false for two-target scalar comparison, or (b) "pairDiff" task with paramsHint.absolute=true when the comparison is per-key across two series. Do NOT emit lagDiff with "absolute" — LagDiffOp does not support that field.
+  - "absolute difference" / "magnitude of the gap" / "how far apart" implies one of: (a) "diff" task with paramsHint.signed=false for two-target scalar comparison, (b) "pairDiff" task with paramsHint.absolute=true when the comparison is per-key across two series, or (c) "lagDiff" task with paramsHint.absolute=true when computing magnitudes of adjacent-period changes.
   - "leftmost" / "rightmost" / "first from the left/right" / "Nth from the right" implies an "nth" task with paramsHint.from="left" or "right". If the explanation also names a sort dimension ("leftmost when sorted by Year"), include paramsHint.orderField="<that field>".
   - "sorted by X" / "in order of X" / "ordered by date/year/category" (where X is NOT the measure being aggregated) implies a "sort" task with paramsHint.orderField="<X field>". If the explanation says "sort by value/revenue/score" (the measure itself), use paramsHint.field=<measure> instead. The two are different: paramsHint.field is the value column to compare, paramsHint.orderField is an alternate key (typically a dimension) used to sort.
   - "year-over-year change" / "month-over-month" / "compared to the previous period/year" implies a "lagDiff" task with paramsHint.order="asc" (chronological by default). Use paramsHint.order="desc" only when the explanation explicitly reverses the direction.
@@ -126,10 +126,11 @@ Rules:
   - `percent` (bool — for `diff` task; emit only when explanation explicitly says "percent change" or "%")
   - `mode` (string — only `"ratio"` is meaningful here; the default `"difference"` does not need to be emitted)
   - `aggregate` (string — one of `"sum"`/`"avg"`/`"min"`/`"max"`/`"percentage_of_total"`; applies to `diff` and `compareBool` slice-aggregate forms)
-  - `absolute` (bool — for `diff` and `pairDiff` tasks only; do NOT emit for `lagDiff`)
+  - `absolute` (bool — for `diff`, `pairDiff`, and `lagDiff` tasks)
   - `from` (string — `"left"` or `"right"`, for `nth` tasks only)
   - `orderField` (string — alternate sort key dimension, for `sort` and `nth` tasks)
   - `order` (string — `"asc"` or `"desc"`, for `sort`/`nth`/`lagDiff` when explicitly directional)
+  - `targetAxis` (string — `"x"` (default) or `"y"`, for `retrieveValue` only). Emit `"y"` ONLY when the explanation explicitly asks for an x-axis category given a numeric measure value (reverse lookup), e.g. "어느 해에 65를 기록했나" / "which country had a rating of 60". Otherwise omit (forward `x` is the default).
   - These are HINTS to help Step-Compose pick the right field configuration. Step-Compose may override them based on chart_context and the final-artifact intent. Emit them only when the explanation explicitly suggests them; never invent.
 - Series restriction:
   - Never represent series selection as a filter on the series field.

@@ -305,8 +305,8 @@ spec_004fhteah0l9kud2 = {
 spec_11e148qcs7x70t8v = {
     "ops": [
         PairDiffOp(
-            id="n2",
-            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=1),
+            id="n1",
+            meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
             by="Race/Ethnicity",
             field="Share_of_Import_Value",
             groupA="South Korea",
@@ -315,8 +315,8 @@ spec_11e148qcs7x70t8v = {
     ],
     "ops2": [
         FilterOp(
-            id="n3",
-            meta=OpsMeta(nodeId="n3", inputs=["n2"], sentenceIndex=2),
+            id="n2",
+            meta=OpsMeta(nodeId="n2", inputs=["n1"], sentenceIndex=2),
             field="Share_of_Import_Value",
             operator=">",
             value=0,

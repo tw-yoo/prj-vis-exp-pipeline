@@ -7,7 +7,7 @@ from opsspec.core.models import ChartContext
 from opsspec.specs.add import AddOp
 from opsspec.specs.aggregate import AverageOp, SumOp
 from opsspec.specs.base import OpsMeta
-from opsspec.specs.compare import CompareOp, PairDiffOp
+from opsspec.specs.compare import DiffOp, PairDiffOp
 from opsspec.specs.filter import FilterOp
 from opsspec.specs.range_sort_select import FindExtremumOp
 from opsspec.specs.scale import ScaleOp
@@ -326,7 +326,12 @@ class ExecutorTest(unittest.TestCase):
         results = executor.execute(rows=rows, ops_spec=ops_spec)
         self.assertEqual(results["ops"][0].target, "s1")
 
-    def test_scale_and_compare_on_scalar_refs(self) -> None:
+    def test_scale_and_diff_on_scalar_refs(self) -> None:
+        # Replacement for the deprecated CompareOp(which="min|max") scalar-select
+        # test. The original purpose was exercising scalar-ref propagation
+        # through multiple op groups (filter→average×2 → arithmetic on scalars →
+        # scale → final value). Now using diff + scale, which are part of the
+        # current op set, while still hitting the multi-group scalar-ref path.
         executor = OpsSpecExecutor(self.context)
         ops_spec = {
             "ops": [
@@ -366,12 +371,12 @@ class ExecutorTest(unittest.TestCase):
                 )
             ],
             "ops5": [
-                CompareOp(
-                    op="compare",
+                DiffOp(
+                    op="diff",
                     field="Revenue_Million_Euros",
                     targetA="ref:n2",
                     targetB="ref:n4",
-                    which="min",
+                    signed=False,
                     id="n5",
                     meta=OpsMeta(nodeId="n5", inputs=["n2", "n4"]),
                 ),
@@ -384,32 +389,12 @@ class ExecutorTest(unittest.TestCase):
                     meta=OpsMeta(nodeId="n6", inputs=["n5"]),
                 ),
             ],
-            "ops6": [
-                CompareOp(
-                    op="compare",
-                    field="Revenue_Million_Euros",
-                    targetA="ref:n2",
-                    targetB="ref:n4",
-                    which="max",
-                    id="n7",
-                    meta=OpsMeta(nodeId="n7", inputs=["n2", "n4"]),
-                ),
-                CompareOp(
-                    op="compare",
-                    field="Revenue_Million_Euros",
-                    targetA="ref:n6",
-                    targetB="ref:n7",
-                    which="max",
-                    id="n8",
-                    meta=OpsMeta(nodeId="n8", inputs=["n6", "n7"]),
-                ),
-            ],
         }
 
         results = executor.execute(rows=self.rows, ops_spec=ops_spec)
-        final_value = results["ops6"][-1].value
-        # Broadcasting avg=205, Commercial avg=280 -> min=205 -> doubled=410 -> max(410,280)=410
-        self.assertEqual(final_value, 410.0)
+        final_value = results["ops5"][-1].value
+        # Broadcasting avg=205, Commercial avg=280 → |205-280|=75 → ×2 = 150
+        self.assertEqual(final_value, 150.0)
 
     def test_add_scalar_refs(self) -> None:
         executor = OpsSpecExecutor(self.context)

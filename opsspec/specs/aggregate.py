@@ -9,14 +9,19 @@ from .base import BaseOpFields
 class RetrieveValueOp(BaseOpFields):
     """단일 값 조회.
     필수: `field`, `target`.
-    값 규칙: `field`는 조회 기준 필드명(보통 x축/차원 필드명), `target`은 해당 필드의 실제 데이터값.
+    값 규칙: `field`는 조회 기준 필드명, `target`은 해당 필드의 실제 데이터값.
     선택: `group`은 series/group 이름 제한.
+    `targetAxis`로 조회 방향 제어:
+      - `'x'` (default): forward — `target`이 x축 카테고리 라벨, 해당 row의 y값을 반환.
+      - `'y'`: reverse — `target`이 numeric y값, 그 값과 일치하는 x 카테고리 row를 반환.
+        multi-measure 차트에서는 `field`를 함께 지정해야 함.
     """
 
     op: Literal["retrieveValue"] = "retrieveValue"
-    field: Optional[str] = None  # 필드명 (x축 필드명, 차원 필드명 등)
-    target: Optional[JsonValue] = None  # 필드에서 찾을 실제 값 (예: "2017")
+    field: Optional[str] = None  # 필드명 (forward면 x축, reverse면 y measure 필드명)
+    target: Optional[JsonValue] = None  # forward: 카테고리 라벨 / reverse: numeric y값
     group: Optional[str] = None  # group/series 이름 (예: "Commercial")
+    targetAxis: Optional[Literal["x", "y"]] = None  # default 'x'
 
 
 class AverageOp(BaseOpFields):
