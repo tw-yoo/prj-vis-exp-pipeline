@@ -429,6 +429,11 @@ class OpsSpecExecutor:
             right = op.value  # type: ignore[assignment]
         if right is None:
             return []
+        # For equality operators, preserve the original string form when value
+        # was a numeric-looking string (e.g. "2018") so that `str_target == "2018"`
+        # behaves correctly instead of being coerced to `2018.0 == "2018"` (always False).
+        if op.operator in {"==", "eq", "!="} and isinstance(op.value, str) and not op.value.startswith("ref:"):
+            right = op.value
         field_kind = self._infer_field_kind(op.field)
         out: List[DatumValue] = []
         for item in sliced:
