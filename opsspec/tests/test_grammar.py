@@ -350,6 +350,7 @@ spec_0egzejn5mejtnfdm = {
         FilterOp(
             id="n1",
             meta=OpsMeta(nodeId="n1", inputs=[], sentenceIndex=1),
+            field="Region",
             group="Scotland"
         ),
         FindExtremumOp(
