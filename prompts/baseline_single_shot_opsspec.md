@@ -1,7 +1,12 @@
-Task: Single-Shot OpsSpec Generation (Baseline).
+Task: Baseline OpsSpec Generation — plan the whole DAG in one pass.
 
 Given a natural-language question, explanation, chart context, and data rows,
-generate the complete OpsSpec DAG in ONE pass.
+plan the COMPLETE OpsSpec DAG (op nodes + dependency edges) in a SINGLE pass.
+
+You will NOT receive any executed intermediate values. A deterministic scheduler/executor runs
+your DAG AFTERWARD and resolves every "ref:nX" placeholder from the referenced prior node. So the
+DAG must be fully self-contained: encode all dependencies via meta.inputs and "ref:nX", assign
+nodeIds in dependency order, and use ONLY ops listed in the operation contract below.
 
 The output is a JSON object where keys are sentence-layer group names
 (ops, ops2, ops3, ...) and values are arrays of operation specifications.

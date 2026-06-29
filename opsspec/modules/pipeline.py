@@ -519,25 +519,26 @@ class OpsSpecPipeline:
         self.step_compose_prompt = _load_prompt(self.step_compose_prompt_path)
         self.shared_rules_prompt = _load_prompt(self.shared_rules_prompt_path) if self.shared_rules_prompt_path.exists() else ""
 
-    def _llm_for_request(self, llm_backend: Optional[str]) -> StructuredLLMClient:
+    def _llm_for_request(self, llm_backend: Optional[str], openai_model: Optional[str] = None) -> StructuredLLMClient:
         backend = (llm_backend or "").strip().lower()
-        if not backend:
+        if not backend and not openai_model:
             return self.llm
-        if backend not in {"openai", "ollama"}:
+        if backend and backend not in {"openai", "ollama"}:
             raise ValueError('llm_backend must be one of: "openai", "ollama".')
         request_llm = StructuredLLMClient(
             ollama_model=self.ollama_model,
             ollama_base_url=self.ollama_base_url,
             ollama_api_key=self.ollama_api_key,
-            backend_override=backend,
+            backend_override=backend or None,
+            openai_model_override=openai_model,
         )
         request_llm.load()
         return request_llm
 
-    def model_name_for_request(self, llm_backend: Optional[str]) -> str:
-        request_llm = self._llm_for_request(llm_backend)
+    def model_name_for_request(self, llm_backend: Optional[str], openai_model: Optional[str] = None) -> str:
+        request_llm = self._llm_for_request(llm_backend, openai_model)
         if request_llm.backend == "openai_http":
-            return os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
+            return request_llm.openai_model_override or os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
         return request_llm.ollama_model
 
     def generate(
@@ -550,9 +551,10 @@ class OpsSpecPipeline:
         request_id: str,
         debug: bool,
         llm_backend: Optional[str] = None,
+        openai_model: Optional[str] = None,
     ) -> GenerateOpsSpecResponse:
         self.load()
-        request_llm = self._llm_for_request(llm_backend)
+        request_llm = self._llm_for_request(llm_backend, openai_model)
         assert self.inventory_prompt is not None
         assert self.step_compose_prompt is not None
         assert self.shared_rules_prompt is not None

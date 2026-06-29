@@ -62,12 +62,14 @@ class StructuredLLMClient:
         ollama_api_key: str,
         instructor_mode: str = "JSON",
         backend_override: Optional[str] = None,
+        openai_model_override: Optional[str] = None,
     ) -> None:
         self.ollama_model = ollama_model
         self.ollama_base_url = ollama_base_url
         self.ollama_api_key = ollama_api_key
         self.instructor_mode = instructor_mode
         self.backend_override = (backend_override or "").strip().lower()
+        self.openai_model_override = (openai_model_override or "").strip() or None
         self.backend: Optional[str] = None
         self.client: Any = None
 
@@ -104,7 +106,7 @@ class StructuredLLMClient:
         # Default to ChatGPT/OpenAI API when credentials are available.
         # Use LLM_BACKEND to override (e.g., "ollama" for local runs).
         if forced_backend in {"", "openai", "chatgpt"} and has_openai_key:
-            model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
+            model = self.openai_model_override or os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
             self.backend = "openai_http"
             self.client = None
             logger.info(
@@ -276,7 +278,7 @@ class StructuredLLMClient:
         task_name: str,
     ) -> Dict[str, Any]:
         api_key = _openai_api_key()
-        model = os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
+        model = self.openai_model_override or os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
         base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         endpoint = f"{base_url}/chat/completions"
 

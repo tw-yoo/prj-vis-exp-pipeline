@@ -98,7 +98,7 @@ Endpoint 구현:
 - `POST /run_module_trace` (inventory + steps + ops_spec + trace 반환)
 - `POST /run_python_plan` (시나리오 파일로 grammar+draw plan 생성)
 - `POST /answer_question` (spec/csv 경로 입력으로 plan + answer + explanation 생성)
-- `POST /generate_grammar_baseline_single_shot` (single-shot baseline OpsSpec 생성)
+- `POST /generate_grammar_baseline` (B2 baseline: 1회 LLM로 전체 OpsSpec DAG 계획 → 동일 validator/scheduler/executor로 실행, strict-retry)
 - `POST /generate_visual_desc_baseline` (sentence별 누적 image prompt baseline)
 - `POST /generate_vegalite_annotation_baseline` (sentence별 누적 Vega-Lite annotation baseline)
 - `POST /generate_d3_annotation_baseline` (deterministic Vega-Lite→D3 후 sentence별 annotation baseline)

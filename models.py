@@ -13,6 +13,7 @@ class GenerateGrammarRequest(BaseModel):
     data_rows: list[dict] = Field(..., description="Raw data rows (<500 lines assumed)")
     debug: bool = True
     llm_backend: Literal["openai", "ollama"] | None = None
+    openai_model: str | None = Field(None, description="OpenAI model override (e.g. 'gpt-5.2-mini'). Falls back to OPENAI_MODEL env or server default.")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -23,6 +24,7 @@ class GenerateGrammarRequestBodyRequest(BaseModel):
     chart_id: str = Field(..., min_length=1, description="ChartQA chart id / Vega-Lite spec id")
     debug: bool = True
     llm_backend: Literal["openai", "ollama"] | None = None
+    openai_model: str | None = Field(None, description="OpenAI model override.")
 
     model_config = ConfigDict(extra="forbid")
 

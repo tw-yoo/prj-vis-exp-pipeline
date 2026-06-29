@@ -33,9 +33,10 @@ from models import (
 )
 from draw_plan import build_draw_ops_spec, export_draw_plan_to_public, validate_draw_groups_payload
 from opsspec.runtime.scheduler import schedule_ops_spec
+from opsspec.runtime.executor import OpsSpecExecutor
 from opsspec.runtime.execution_plan import build_sentence_execution_plan
 from opsspec.runtime.visual_execution_plan import build_visual_execution_plan
-from opsspec.modules.pipeline import OpsSpecPipeline
+from opsspec.modules.pipeline import OpsSpecPipeline, _build_retry_feedback
 from opsspec.modules.module_baseline_single_shot import run_baseline_single_shot
 from opsspec.modules.module_baseline_d3_annotation import D3AnnotationStepValidationError, run_baseline_d3_annotation
 from opsspec.modules.module_baseline_text_to_image import run_baseline_text_to_image
@@ -63,6 +64,7 @@ from opsspec.runtime.context_builder import build_chart_context
 from opsspec.runtime.canonicalize import canonicalize_ops_spec_groups
 from opsspec.runtime.chartqa_loader import load_chartqa_case
 from opsspec.runtime.vegalite_to_d3 import convert_vegalite_to_d3
+from opsspec.runtime.baseline_repair import autorepair_ops_groups, build_repair_feedback
 from opsspec.validation.endpoint_validators import validate_and_parse_ops_spec_groups, validate_refs_against_node_ids
 from opsspec.core.utils import prune_nulls
 
@@ -413,6 +415,7 @@ async def generate_grammar_request_body(request: GenerateGrammarRequestBodyReque
         data_rows=data_rows,
         debug=bool(request.debug),
         llm_backend=request.llm_backend,
+        openai_model=request.openai_model,
     )
 
 
@@ -524,7 +527,7 @@ async def generate_grammar(request: GenerateGrammarRequest):
 
     try:
         chart_id = _chart_id_from_vega_spec(request.vega_lite_spec)
-        model_name = pipeline.model_name_for_request(request.llm_backend)
+        model_name = pipeline.model_name_for_request(request.llm_backend, request.openai_model)
         cached_spec = _read_cached_grammar_spec(
             chart_id=chart_id,
             model=model_name,
@@ -562,6 +565,7 @@ async def generate_grammar(request: GenerateGrammarRequest):
             request_id=request_id,
             debug=bool(request.debug),
             llm_backend=request.llm_backend,
+            openai_model=request.openai_model,
         )
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.info(
@@ -1155,14 +1159,25 @@ def _persist_d3_annotation_debug_bundle(
         )
 
 
-@app.post("/generate_grammar_baseline_single_shot")
-async def generate_grammar_baseline_single_shot(request: GenerateGrammarRequest):
-    """Baseline: Generate the complete OpsSpec DAG in a single LLM call."""
+@app.post("/generate_grammar_baseline")
+async def generate_grammar_baseline(request: GenerateGrammarRequest):
+    """Baseline (B2, plan-then-execute / LLMCompiler-style).
+
+    한 번의 LLM 호출로 전체 OpsSpec DAG(op 노드 + 의존성 edge)를 계획한 뒤,
+    제안 시스템과 *동일한* 결정론적 validator/scheduler/executor 로 실행한다.
+    실행/검증 실패 시 strict-retry(전체 plan 재생성)로 교정한다.
+
+    /generate_grammar(recursive)와의 차이:
+    - recursive: op 하나하나를 별도 LLM 호출로 compose하며, step 사이에 실제 실행값을 다음 입력으로 전달.
+    - baseline:  계획 단계에서 실행 중간값을 전혀 보지 않고 전체 DAG를 한 번에 생성 → 이후 결정론적 실행.
+    planner에는 recursive와 동일한 op contract(allowed ops + 필드/의미 규칙)를 주입하므로,
+    두 시스템의 차이는 "op 지식"이 아니라 "분해/grounding 전략"뿐이다.
+    """
     llm = _get_baseline_llm(app)
     request_id = uuid.uuid4().hex[:12]
     started_at = time.perf_counter()
     q_preview = " ".join(request.question.split())[:120]
-    logger.info('[/baseline_single_shot] request received | request_id=%s question="%s"', request_id, q_preview)
+    logger.info('[/generate_grammar_baseline] request received | request_id=%s question="%s"', request_id, q_preview)
 
     try:
         prompt_template = _load_baseline_prompt("baseline_single_shot_opsspec.md")
@@ -1174,6 +1189,7 @@ async def generate_grammar_baseline_single_shot(request: GenerateGrammarRequest)
             roles_summary, series_domain, measure_fields, explanation_sentences,
         ) = _build_common_context(request)
 
+        # planner 에 주입하는 op 계약 — recursive pipeline과 동일 (baseline도 op을 똑같이 안다).
         ops_contract = build_ops_contract_for_prompt(chart_context=chart_context)
         budget = tune_few_shot_budget(
             question=request.question,
@@ -1190,9 +1206,11 @@ async def generate_grammar_baseline_single_shot(request: GenerateGrammarRequest)
 
         max_retries = int(os.getenv("RECURSIVE_MAX_RETRIES", "3") or "3")
         validation_feedback: List[str] = []
-        result = None
+        scheduled_groups: Dict[str, List[Any]] | None = None
+        warnings: List[str] = list(context_warnings)
 
         for attempt in range(1, max_retries + 1):
+            # ── Planner (LLM 1회): 전체 DAG 계획 ──────────────────────────────
             result = run_baseline_single_shot(
                 llm=llm,
                 prompt_template=prompt_template,
@@ -1212,22 +1230,67 @@ async def generate_grammar_baseline_single_shot(request: GenerateGrammarRequest)
                 few_shot_examples=few_shot.text,
                 include_debug_prompts=bool(request.debug),
             )
-            break
+            result.pop("_debug", None)
+            llm_warnings = result.get("warnings") if isinstance(result.get("warnings"), list) else []
 
+            # planner 출력에서 ops 그룹(ops, ops2, ...)만 추출.
+            raw_groups = {
+                key: value
+                for key, value in result.items()
+                if isinstance(key, str) and (key == "ops" or (key.startswith("ops") and key[3:].isdigit()))
+            }
+            # ── Stage 1: 결정론적 구조 복구 (LLM 없음) ──────────────────────────
+            #    group↔sentenceIndex 불일치 등 cosmetic 오류를 검증 전에 미리 교정.
+            #    스케줄러/실행기는 meta.inputs/nodeId만 보므로 실행 의미는 불변.
+            raw_groups, repair_notes = autorepair_ops_groups(raw_groups)
+            if repair_notes:
+                warnings.extend(repair_notes)
+            try:
+                # ── Validate (schema + op contract + ref/node 교차검증) ──────
+                groups, parse_warnings, errors = validate_and_parse_ops_spec_groups(raw_groups, chart_context)
+                groups.setdefault("ops", [])
+                errors.extend(validate_refs_against_node_ids(groups))
+                if errors:
+                    raise ValueError("Validation failed:\n- " + "\n- ".join(errors))
+                # ── Task Fetching Unit + Executor (결정론): schedule 후 실제 실행으로 runnability 확인 ──
+                #    executor가 nodeId 순으로 ref:nX placeholder를 해소하며 전체 DAG를 실행.
+                scheduled = schedule_ops_spec(groups)
+                OpsSpecExecutor(chart_context).execute(rows=request.data_rows, ops_spec=scheduled)
+                scheduled_groups = scheduled
+                warnings.extend(parse_warnings)
+                warnings.extend(str(w) for w in llm_warnings)
+                break
+            except Exception as exc:
+                # ── Stage 2: informed repair ─────────────────────────────────
+                #    blind replan 대신, 다음 planner 콜에 자기 직전 spec + 정확한 에러 +
+                #    "패치만" 지시를 주입한다(structured retry feedback 확장).
+                validation_feedback = build_repair_feedback(
+                    raw_groups, _build_retry_feedback(attempt, max_retries, exc)
+                )
+                logger.warning(
+                    "[/generate_grammar_baseline] retry | request_id=%s attempt=%d/%d error=%s",
+                    request_id, attempt, max_retries, exc,
+                )
+                if attempt == max_retries:
+                    raise RuntimeError(
+                        f"baseline plan-then-execute failed after {max_retries} attempts: {exc}"
+                    ) from exc
+
+        assert scheduled_groups is not None
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.info(
-            "[/baseline_single_shot] completed | request_id=%s elapsed_ms=%.1f",
-            request_id, elapsed_ms,
+            "[/generate_grammar_baseline] completed | request_id=%s groups=%d warnings=%d elapsed_ms=%.1f",
+            request_id, len(scheduled_groups), len(warnings), elapsed_ms,
         )
-
-        # Remove internal keys before returning
-        result.pop("_debug", None)
-        return prune_nulls(result)
+        # /generate_grammar와 동일한 응답 형태(ops group map). baseline은 inventory가 없어 text_chunks는 비움.
+        payload = _build_generate_grammar_response_payload(ops_spec=scheduled_groups, text_chunks={})
+        payload["warnings"] = warnings
+        return payload
 
     except Exception as exc:
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.error(
-            "[/baseline_single_shot] error | request_id=%s elapsed_ms=%.1f error=%s",
+            "[/generate_grammar_baseline] error | request_id=%s elapsed_ms=%.1f error=%s",
             request_id, elapsed_ms, exc,
         )
         raise HTTPException(status_code=500, detail=str(exc)) from exc

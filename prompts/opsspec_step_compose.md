@@ -109,7 +109,11 @@ Critical rules:
    - For op="lagDiff":
      - absolute=true returns absolute magnitudes of adjacent-period differences. Use for "absolute year-over-year change", "size of period-to-period swings".
      - order="asc"|"desc" controls the ordering used to define adjacency.
-   - For op="sum", use it only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.
+   - For op="sum", use it only for bar charts (simple/stacked); group may be string or list. sum is row aggregation, not scalar addition. Check chart_context.mark: when it is "line" (simple/multiple) the contract rejects sum — to total exactly two specific points on a line chart use scalar `add` over their values instead.
+   - For op="scale":
+     - target MUST be a scalar ref ("ref:nX") or a numeric literal.
+     - factor MUST be a numeric multiplier (e.g., 2.0 for "doubled", 0.5 for "halved", 100 for "to percent").
+     - scale is scalar-only; do not use it on row-list results.
    - For op="range":
      - Computes max − min of the working slice as a single scalar.
      - field defaults to primary_measure; group restricts to one series before computing the spread.
@@ -136,6 +140,7 @@ Critical rules:
      - row aggregation: sum/average/count
      - scalar arithmetic: add/scale/diff (scalar-ref mode)
      - row selection/ranking: filter/sort/nth/findExtremum
+   - MATCH OP TO INPUT SHAPE (contract invariant): the scalar-only ops (add, scale, diff, compareBool) consume scalar refs ("ref:nX"), never a dataset. If the current input node is a ROW-LIST and you need a single number, reduce it with average/sum/count/findExtremum/range; do NOT apply add/scale/diff to a row-list. Use add/diff only to combine exactly two named scalars. (e.g. to total many per-row differences from a prior pairDiff/lagDiff, use sum (bar) — not add; to average a small filtered slice, use average — not scale.)
 9) QUESTION-DRIVEN INPUT SELECTION:
    When multiple available nodes could serve as inputs or scalar refs, resolve ambiguity by reading the QUESTION:
    - Ask: "What semantic role does the current step play in answering the question?"
