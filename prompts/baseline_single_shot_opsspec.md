@@ -183,7 +183,7 @@ Specific operation reminders (extended-field semantics):
 - For op="lagDiff":
   - absolute=true returns absolute magnitudes of adjacent-period differences. Use for "absolute year-over-year change", "size of period-to-period swings".
   - order="asc"|"desc" controls the ordering used to define adjacency.
-- For op="sum": use only for bar charts; group may be string or list. sum is row aggregation, not scalar addition.
+- For op="sum": total a row-slice or N>=2 values into one scalar; valid on ALL chart types including line. group may be string or list. sum is row aggregation, not scalar addition. Use add only to combine exactly two named scalars.
 - For op="range":
   - Computes max − min of the working slice as a single scalar.
   - field defaults to primary_measure; group restricts to one series first.
@@ -259,9 +259,9 @@ by reading the QUESTION:
 - Choose inputs/refs that match that semantic role, NOT simply the most recently computed node.
 
 SumOp rule:
-- op="sum" is allowed only for bar charts (simple/stacked).
+- op="sum" totals a row-slice or N>=2 values into one scalar; allowed on ALL chart types (bar AND line).
 - SumOp.group may be a string or list of strings.
-- SumOp is row aggregation only (not scalar arithmetic).
+- SumOp is row aggregation only (not scalar arithmetic). To combine exactly two named scalars, use add — not sum.
 
 AddOp rule:
 - Use op="add" to add two scalar values.

@@ -36,6 +36,13 @@ Output schema:
   "warnings": ["string"]
 }
 
+Concrete output examples (adapt fields to the actual task, do NOT copy these literally):
+- filter between years: {"op_spec": {"op": "filter", "operator": "between", "value": ["2015", "2020"]}, "inputs": [], "warnings": []}
+- lagDiff on primary measure: {"op_spec": {"op": "lagDiff", "field": "Poverty rate"}, "inputs": ["n1"], "warnings": []}
+- average of filtered rows: {"op_spec": {"op": "average", "field": "Value"}, "inputs": ["n2"], "warnings": []}
+- diff of two scalars: {"op_spec": {"op": "diff", "targetA": "ref:n2", "targetB": "ref:n4"}, "inputs": ["n2", "n4"], "warnings": []}
+- compareBool: {"op_spec": {"op": "compareBool", "targetA": "ref:n1", "targetB": "ref:n3", "operator": ">"}, "inputs": ["n1", "n3"], "warnings": []}
+
 Critical rules:
 1) Task selection:
    - DO NOT pick/select a taskId in your output.
@@ -109,7 +116,7 @@ Critical rules:
    - For op="lagDiff":
      - absolute=true returns absolute magnitudes of adjacent-period differences. Use for "absolute year-over-year change", "size of period-to-period swings".
      - order="asc"|"desc" controls the ordering used to define adjacency.
-   - For op="sum", use it only for bar charts (simple/stacked); group may be string or list. sum is row aggregation, not scalar addition. Check chart_context.mark: when it is "line" (simple/multiple) the contract rejects sum — to total exactly two specific points on a line chart use scalar `add` over their values instead.
+   - For op="sum", use it to aggregate a row-slice or N>=2 values into one scalar; valid on ALL chart types including line (line+sum is visualized as line→bar then stacking). group may be string or list. sum is row aggregation, not scalar addition. Use scalar `add` only to combine exactly two named scalars (two ref:nX, or one ref:nX + literal); do NOT use add to total N points — use sum.
    - For op="scale":
      - target MUST be a scalar ref ("ref:nX") or a numeric literal.
      - factor MUST be a numeric multiplier (e.g., 2.0 for "doubled", 0.5 for "halved", 100 for "to percent").
@@ -140,7 +147,7 @@ Critical rules:
      - row aggregation: sum/average/count
      - scalar arithmetic: add/scale/diff (scalar-ref mode)
      - row selection/ranking: filter/sort/nth/findExtremum
-   - MATCH OP TO INPUT SHAPE (contract invariant): the scalar-only ops (add, scale, diff, compareBool) consume scalar refs ("ref:nX"), never a dataset. If the current input node is a ROW-LIST and you need a single number, reduce it with average/sum/count/findExtremum/range; do NOT apply add/scale/diff to a row-list. Use add/diff only to combine exactly two named scalars. (e.g. to total many per-row differences from a prior pairDiff/lagDiff, use sum (bar) — not add; to average a small filtered slice, use average — not scale.)
+   - MATCH OP TO INPUT SHAPE (contract invariant): the scalar-only ops (add, scale, diff, compareBool) consume scalar refs ("ref:nX"), never a dataset. If the current input node is a ROW-LIST and you need a single number, reduce it with average/sum/count/findExtremum/range; do NOT apply add/scale/diff to a row-list. Use add/diff only to combine exactly two named scalars. (e.g. to total many per-row differences from a prior pairDiff/lagDiff, use sum — not add; to average a small filtered slice, use average — not scale.)
 9) QUESTION-DRIVEN INPUT SELECTION:
    When multiple available nodes could serve as inputs or scalar refs, resolve ambiguity by reading the QUESTION:
    - Ask: "What semantic role does the current step play in answering the question?"
@@ -152,33 +159,33 @@ Critical rules:
    When the current reasoning chunk is ambiguous (e.g., "double the X" without naming X explicitly),
    derive X from the QUESTION before selecting the ref.
 
-10) COMPREHENSIVE INPUTS GATHERING - 필수 규칙 (MUST APPLY):
-   For comparison/ranking operations (findExtremum, diff, pairDiff, diffByValue):
+10) INPUTS BY OP SHAPE (executor invariant: AT MOST ONE data-parent node per op):
+   The executor runs each op on ONE "data parent" (the prior node whose ROW result
+   becomes this op's dataset) PLUS any number of SCALAR refs ("ref:nX") named in
+   op_spec fields. `inputs` may therefore contain at most ONE data-parent nodeId;
+   every OTHER referenced node must appear as a scalar ref in an op_spec field (so it
+   counts as a scalar dep, not a second data parent). Two data-parent inputs are rejected.
 
-   CRITICAL RULE: inputs MUST include ALL available nodes that contribute
-   to the semantic meaning of the current task.
+   - Scalar-combining ops (diff, compareBool, add, scale, diffByValue): name each
+     operand as a scalar ref in the op_spec field (targetA/targetB/target/targetValue
+     = "ref:nX"). Those nodes go in `inputs` but count as scalar deps, NOT data parents.
+     - diff / compareBool: exactly 2 operands (two "ref:nX", or dimension labels that
+       resolve against the single data parent). diffByValue: targetValue="ref:nX".
 
-   Specific cases (MUST apply):
+   - Single-data-parent aggregates/selectors (findExtremum, average, sum, count, nth,
+     sort): operate on ONE row-set only — `inputs` has AT MOST ONE node. To rank or
+     aggregate AMONG several specific values, FIRST gather them into ONE node (a filter,
+     or a prior step that yields the multi-row slice), then run the aggregate over that
+     single node.
+     - WRONG: retrieveValue("A")→n1, retrieveValue("B")→n2, findExtremum(inputs=["n1","n2"]).
+       The executor uses only one data parent; two data-parent inputs are rejected.
+     - RIGHT: filter(include=["A","B"])→n1 (one node, the 2 rows), then
+       findExtremum(which="max", inputs=["n1"]).
+     - To ask which of two specific scalars is larger, use
+       compareBool(targetA="ref:n1", targetB="ref:n2") — NOT findExtremum over two nodes.
 
-   - findExtremum: If multiple candidate nodes exist (from different groups/times),
-     inputs MUST contain ALL of them.
-     Example:
-       Available: n1 (Tablets 2017: 173.56), n2 (Mobile PCs 2022: 244.43)
-       Task: findExtremum("field", which="max")
-       → inputs MUST be ['n1', 'n2'], NOT ['n1'] alone
-       → Rationale: "max between two values" requires BOTH values to compare
-       → If only n1 is included, the max is not determined between the two candidates
-
-   - diff: MUST include exactly 2 nodes being compared
-
-   - diffByValue: When the reference V comes from a prior node (targetValue="ref:nX"), include that node in inputs
-
-   - pairDiff: Include all relevant input nodes for the pair comparison
-
-   IMPORTANT: The current reasoning chunk may be implicit about all needed inputs.
-   Do NOT assume that "find maximum" or "check which is greater" requires only one input.
-   Derive from the QUESTION's semantic intent: if the question asks to compare
-   MULTIPLE values or entities, then ALL available candidate nodes must be inputs.
+   Derive intent from the QUESTION, but never give a single-data-parent op more than
+   one data-parent input.
 
 Mini pattern (subset average via inputs):
 - Wrong:

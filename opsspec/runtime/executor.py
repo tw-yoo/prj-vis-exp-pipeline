@@ -397,10 +397,10 @@ class OpsSpecExecutor:
             if not boundaries or len(boundaries) != 2:
                 raise ValueError("filter between requires value=[start,end]")
             start, end = str(boundaries[0]), str(boundaries[1])
-            start_idx: Optional[int] = None
-            end_idx: Optional[int] = None
+
+            # (row-index, candidate-string) for each sliced row.
+            cands: List[Tuple[int, str]] = []
             for idx, item in enumerate(sliced):
-                candidate: Optional[str]
                 if use_target:
                     candidate = item.target
                 else:
@@ -411,17 +411,42 @@ class OpsSpecExecutor:
                     if raw_value is None:
                         continue
                     candidate = str(raw_value)
-                if start_idx is None:
-                    if candidate == start:
-                        start_idx = idx
+                if candidate is None:
                     continue
-                if candidate == end:
-                    end_idx = idx
-                    break
+                cands.append((idx, str(candidate)))
+
+            # Boundary matching is tolerant: exact (whitespace-insensitive) →
+            # numeric-equal ("2014" vs "2014.0") → nearest numeric (snap a bound
+            # that falls between rows or just outside the data to the closest row).
+            # Pure exact-string matching broke on format drift and "from A to B"
+            # where A/B isn't an exact label (held-out filter_between_boundary).
+            def _match_idx(boundary: str, search_from: int) -> Optional[int]:
+                pool = [(i, c) for (i, c) in cands if i >= search_from]
+                if not pool:
+                    return None
+                bnorm = boundary.strip()
+                for i, c in pool:
+                    if c.strip() == bnorm:
+                        return i
+                bnum = to_float(boundary)
+                if bnum is not None:
+                    numeric = [(i, to_float(c)) for (i, c) in pool]
+                    numeric = [(i, v) for (i, v) in numeric if v is not None]
+                    if numeric:
+                        for i, v in numeric:
+                            if v == bnum:
+                                return i
+                        return min(numeric, key=lambda iv: abs(iv[1] - bnum))[0]
+                return None
+
+            start_idx = _match_idx(start, 0)
             if start_idx is None:
                 raise ValueError(f'filter between start "{start}" not found in selected slice')
+            end_idx = _match_idx(end, start_idx)
             if end_idx is None:
                 raise ValueError(f'filter between end "{end}" not found after start "{start}" in selected slice')
+            if end_idx < start_idx:
+                start_idx, end_idx = end_idx, start_idx
             return sliced[start_idx : end_idx + 1]
 
         right = self._resolve_scalar_ref(op.value)
@@ -506,7 +531,8 @@ class OpsSpecExecutor:
         return sorted(sliced, key=lambda item: self._value_key(item, op.field), reverse=reverse)
 
     def _op_sum(self, data: List[DatumValue], op: SumOp) -> List[DatumValue]:
-        # sum is validated as bar-only. If bypassed, keep legacy-safe behavior.
+        # sum은 모든 차트 타입에서 허용된다(line 포함). 합산 자체는 mark와 무관하게 동일하며,
+        # line→bar 시각화 전환은 프론트엔드 담당이다. non-bar는 단순 group-slice 합산 경로.
         if self.chart_context.mark != "bar":
             sliced = self._slice_by_group(data, op.group)
             value = sum(item.value for item in sliced)

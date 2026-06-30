@@ -228,6 +228,17 @@ class StructuredLLMClient:
         system_prompt: str,
         user_prompt: str,
     ) -> Dict[str, Any]:
+        # StepComposeOutput의 op_spec은 Dict[str,Any]라 Ollama constrained sampler가
+        # schema template을 literal로 복사한다 ({op:{}, ...:{}}). 더 좁은 schema를
+        # 가진 Ollama 전용 wrapper 모델이 있으면 그 스키마로 교체한다.
+        schema_model = response_model
+        try:
+            from .recursive_models import StepComposeOutput, _StepComposeOutputOllama
+            if response_model is StepComposeOutput:
+                schema_model = _StepComposeOutputOllama
+        except ImportError:
+            pass
+
         base_url = self.ollama_base_url.rstrip("/")
         if base_url.endswith("/v1"):
             base_url = base_url[:-3]
@@ -239,7 +250,7 @@ class StructuredLLMClient:
                 {"role": "user", "content": user_prompt},
             ],
             "stream": False,
-            "format": response_model.model_json_schema(),
+            "format": schema_model.model_json_schema(),
             "options": {"temperature": 0, "top_p": 1},
         }
         request = urllib.request.Request(
@@ -261,7 +272,12 @@ class StructuredLLMClient:
             outer = json.loads(raw)
             raw_content: str = outer["message"]["content"]
             inner = json.loads(raw_content)
-            validated = response_model.model_validate(inner)
+            if schema_model is not response_model and hasattr(schema_model, "to_step_compose_output"):
+                # wrapper 모델로 파싱한 후 원래 모델 형식으로 변환
+                wrapper = schema_model.model_validate(inner)
+                validated = wrapper.to_step_compose_output()
+            else:
+                validated = response_model.model_validate(inner)
             result = validated.model_dump(by_alias=True)
             result["_raw_llm_response"] = raw_content
             result["_llm_elapsed_ms"] = round((time.perf_counter() - started) * 1000, 1)

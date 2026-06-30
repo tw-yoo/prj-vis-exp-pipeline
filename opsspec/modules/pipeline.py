@@ -27,7 +27,7 @@ from ..runtime.normalize import normalize_meta_inputs
 from ..runtime.op_registry import build_ops_contract_for_prompt
 from ..specs.union import OperationSpec, parse_operation_spec
 from ..validation.recursive_validators import validate_inventory, validate_step_compose_output
-from ..validation.validators import validate_operation
+from ..validation.validators import dimension_filter_for_group_op, validate_operation
 from .module_inventory import run_inventory_module
 from .prompt_examples import (
     build_inventory_few_shot_examples,
@@ -519,14 +519,14 @@ class OpsSpecPipeline:
         self.step_compose_prompt = _load_prompt(self.step_compose_prompt_path)
         self.shared_rules_prompt = _load_prompt(self.shared_rules_prompt_path) if self.shared_rules_prompt_path.exists() else ""
 
-    def _llm_for_request(self, llm_backend: Optional[str], openai_model: Optional[str] = None) -> StructuredLLMClient:
+    def _llm_for_request(self, llm_backend: Optional[str], openai_model: Optional[str] = None, ollama_model: Optional[str] = None) -> StructuredLLMClient:
         backend = (llm_backend or "").strip().lower()
-        if not backend and not openai_model:
+        if not backend and not openai_model and not ollama_model:
             return self.llm
         if backend and backend not in {"openai", "ollama"}:
             raise ValueError('llm_backend must be one of: "openai", "ollama".')
         request_llm = StructuredLLMClient(
-            ollama_model=self.ollama_model,
+            ollama_model=(ollama_model or "").strip() or self.ollama_model,
             ollama_base_url=self.ollama_base_url,
             ollama_api_key=self.ollama_api_key,
             backend_override=backend or None,
@@ -535,8 +535,8 @@ class OpsSpecPipeline:
         request_llm.load()
         return request_llm
 
-    def model_name_for_request(self, llm_backend: Optional[str], openai_model: Optional[str] = None) -> str:
-        request_llm = self._llm_for_request(llm_backend, openai_model)
+    def model_name_for_request(self, llm_backend: Optional[str], openai_model: Optional[str] = None, ollama_model: Optional[str] = None) -> str:
+        request_llm = self._llm_for_request(llm_backend, openai_model, ollama_model)
         if request_llm.backend == "openai_http":
             return request_llm.openai_model_override or os.getenv("OPENAI_MODEL", "gpt-5.4-mini").strip()
         return request_llm.ollama_model
@@ -552,9 +552,10 @@ class OpsSpecPipeline:
         debug: bool,
         llm_backend: Optional[str] = None,
         openai_model: Optional[str] = None,
+        ollama_model: Optional[str] = None,
     ) -> GenerateOpsSpecResponse:
         self.load()
-        request_llm = self._llm_for_request(llm_backend, openai_model)
+        request_llm = self._llm_for_request(llm_backend, openai_model, ollama_model)
         assert self.inventory_prompt is not None
         assert self.step_compose_prompt is not None
         assert self.shared_rules_prompt is not None
@@ -807,6 +808,12 @@ class OpsSpecPipeline:
             scalar_deps: Set[str] = set()
             group_name: str = "ops"
             node_id: str = f"n{len(executed_node_ids) + 1}"
+            # A step normally produces one op (step_node_ids == [node_id]), but fix A may
+            # insert a prerequisite filter node, yielding two ops this step. primary_node_id
+            # is always the task's own op (the last node), used for trace/artifact summaries.
+            step_ops: List[OperationSpec] = []
+            step_node_ids: List[str] = [node_id]
+            primary_node_id: str = node_id
             step_warnings: List[str] = list(selection_warnings)
             remaining_before = _remaining_tasks_prompt()
             selected_task_prompt = {
@@ -868,11 +875,64 @@ class OpsSpecPipeline:
                         "sentenceIndex": int(picked_task.sentenceIndex),
                         "source": f"recursive_step={step_idx};taskId={picked_task.taskId}",
                     }
-
                     built = parse_operation_spec(op_dict)
-                    normalized, op_warnings = validate_operation(built, chart_context=chart_context)
-                    step_warnings.extend(op_warnings)
-                    built_op = normalized
+
+                    # Structural fix A: a non-filter aggregate/select op whose `group` is a
+                    # value of a non-series DIMENSION field cannot be expressed via `group`
+                    # (the executor slices only the series axis → empty slice). Insert a
+                    # prerequisite filter(field=<dim>, include=[values]) node and rewire the
+                    # op to consume it. Node ids stay sequential (filter=node_id, op=next id);
+                    # both are executed and registered this step.
+                    dim_insert = dimension_filter_for_group_op(built, chart_context)
+                    if dim_insert is not None:
+                        dim_field, dim_values = dim_insert
+                        op_node_id = f"n{len(executed_node_ids) + 2}"
+                        data_parents = [i for i in meta_inputs if i not in scalar_deps]
+                        filter_dict = {
+                            "op": "filter",
+                            "id": node_id,
+                            "field": dim_field,
+                            "include": list(dim_values),
+                            "meta": {
+                                "nodeId": node_id,
+                                "inputs": data_parents,
+                                "sentenceIndex": int(picked_task.sentenceIndex),
+                                "source": f"recursive_step={step_idx};taskId={picked_task.taskId};auto=dimFilter",
+                            },
+                        }
+                        op_meta_dict = dict(grounded_op_spec)
+                        op_meta_dict.pop("group", None)
+                        op_meta_dict["id"] = op_node_id
+                        op_meta_dict["meta"] = {
+                            "nodeId": op_node_id,
+                            "inputs": sorted({node_id, *scalar_deps}),
+                            "sentenceIndex": int(picked_task.sentenceIndex),
+                            "source": f"recursive_step={step_idx};taskId={picked_task.taskId}",
+                        }
+                        filter_built, filter_warnings = validate_operation(
+                            parse_operation_spec(filter_dict), chart_context=chart_context
+                        )
+                        op_built, op_warnings = validate_operation(
+                            parse_operation_spec(op_meta_dict), chart_context=chart_context
+                        )
+                        step_warnings.extend(filter_warnings)
+                        step_warnings.extend(op_warnings)
+                        step_warnings.append(
+                            f'fix A: group {dim_values} of "{built.op}" are values of dimension '
+                            f'"{dim_field}" (not series "{chart_context.series_field}"); inserted '
+                            f"filter node {node_id} -> {built.op} node {op_node_id}."
+                        )
+                        step_ops = [filter_built, op_built]
+                        step_node_ids = [node_id, op_node_id]
+                        primary_node_id = op_node_id
+                        built_op = op_built
+                    else:
+                        normalized, op_warnings = validate_operation(built, chart_context=chart_context)
+                        step_warnings.extend(op_warnings)
+                        step_ops = [normalized]
+                        step_node_ids = [node_id]
+                        primary_node_id = node_id
+                        built_op = normalized
                     break
                 except Exception as exc:
                     step_feedback = _build_retry_feedback(attempt, max_retries, exc)
@@ -935,16 +995,18 @@ class OpsSpecPipeline:
 
             assert built_op is not None
 
-            # Execute one op to grow artifacts (C).
+            # Execute this step's op(s) to grow artifacts (C). fix A may have inserted a
+            # prerequisite filter node; the executor orders intra-group ops by nodeId so the
+            # filter runs before the op that consumes it.
             exec_warnings: List[str] = []
             try:
-                _ = executor.execute(rows=data_rows, ops_spec={group_name: [built_op]})
+                _ = executor.execute(rows=data_rows, ops_spec={group_name: step_ops})
             except Exception as exc:
                 exec_warnings.append(f"executor failed: {exc}")
                 debug_payloads["error"] = {
                     "stage": "executor_failed",
                     "step": step_idx,
-                    "nodeId": node_id,
+                    "nodeId": primary_node_id,
                     "error": str(exc),
                 }
                 debug_payloads["steps"] = steps_debug
@@ -953,38 +1015,43 @@ class OpsSpecPipeline:
                 trace_logger.error("[request:%s] debug_dump_saved | path=%s", request_id, str(session_dir))
                 raise
 
-            runtime_values = executor.runtime.get(node_id, [])
-            artifact = summarize_runtime_values(
-                list(runtime_values),
-                chart_context=chart_context,
-                max_items=max(1, artifact_preview_n),
-            )
+            # Per-node artifacts (every node produced this step is summarized for prompting).
+            node_artifacts: Dict[str, Dict[str, Any]] = {}
+            for sop, sid in zip(step_ops, step_node_ids):
+                node_artifacts[sid] = summarize_runtime_values(
+                    list(executor.runtime.get(sid, [])),
+                    chart_context=chart_context,
+                    max_items=max(1, artifact_preview_n),
+                )
+
+            runtime_values = executor.runtime.get(primary_node_id, [])
+            artifact = node_artifacts.get(primary_node_id, {})
             if any(math.isnan(float(item.value)) for item in runtime_values):
                 data_parent = "base"
                 if built_op.meta and built_op.meta.inputs:
                     data_parent = str((built_op.meta.inputs or [])[0])
                 nan_warning = (
                     "executor produced NaN value; likely empty slice or invalid group restriction "
-                    f"(nodeId={node_id}, op={built_op.op}, group={getattr(built_op, 'group', None)}, data_parent={data_parent})."
+                    f"(nodeId={primary_node_id}, op={built_op.op}, group={getattr(built_op, 'group', None)}, data_parent={data_parent})."
                 )
                 exec_warnings.append(nan_warning)
                 artifact["nan_detected"] = True
 
-            # Update graph + state
-            ops_spec_groups.setdefault(group_name, []).append(built_op)
-            executed_node_ids.append(node_id)
+            # Update graph + state (register every node produced this step).
+            for sop, sid in zip(step_ops, step_node_ids):
+                ops_spec_groups.setdefault(group_name, []).append(sop)
+                executed_node_ids.append(sid)
+                available_nodes_prompt.append(
+                    {
+                        "nodeId": sid,
+                        "op": sop.op,
+                        "sentenceIndex": int(picked_task.sentenceIndex),
+                        "groupName": group_name,
+                        "artifact": node_artifacts.get(sid, {}),
+                    }
+                )
             remaining_by_id.pop(str(picked_task.taskId), None)
             remaining_after = _remaining_tasks_prompt()
-
-            available_nodes_prompt.append(
-                {
-                    "nodeId": node_id,
-                    "op": built_op.op,
-                    "sentenceIndex": int(picked_task.sentenceIndex),
-                    "groupName": group_name,
-                    "artifact": artifact,
-                }
-            )
 
             step_debug_entry = {
                 "compose": {
@@ -1000,7 +1067,7 @@ class OpsSpecPipeline:
                     # 파이프라인이 결정론적으로 부여하는 메타
                     "step": step_idx,
                     "attempt": attempt,
-                    "nodeId": node_id,
+                    "nodeId": primary_node_id,
                     "groupName": group_name,
                     "grounding_warnings": step_warnings,
                     "status": "ok",
@@ -1024,7 +1091,7 @@ class OpsSpecPipeline:
                 RecursiveStepTrace(
                     step=step_idx,
                     taskId=str(picked_task.taskId),
-                    nodeId=node_id,
+                    nodeId=primary_node_id,
                     groupName=group_name,
                     op=built_op.op,
                     inputs=[str(x) for x in (built_op.meta.inputs or [])],
@@ -1039,7 +1106,7 @@ class OpsSpecPipeline:
                 "[request:%s] step_done | step=%d node=%s op=%s group=%s remaining=%d llm_elapsed_ms=%s",
                 request_id,
                 step_idx,
-                node_id,
+                primary_node_id,
                 built_op.op,
                 group_name,
                 len(remaining_by_id),

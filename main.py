@@ -307,9 +307,8 @@ def configure_trace_logger(log_path: str) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ollama_model = os.getenv("OLLAMA_MODEL", "deepseek-r1:14b")
-    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
-    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.131:11434")
+    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5:32b")
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://172.24.231.204:11434")
     ollama_api_key = os.getenv("OLLAMA_API_KEY", "ollama")
     trace_log_path = os.getenv("TRACE_LOG_PATH", "logs/pipeline_trace.log")
 
@@ -416,6 +415,7 @@ async def generate_grammar_request_body(request: GenerateGrammarRequestBodyReque
         debug=bool(request.debug),
         llm_backend=request.llm_backend,
         openai_model=request.openai_model,
+        ollama_model=request.ollama_model,
     )
 
 
@@ -527,7 +527,7 @@ async def generate_grammar(request: GenerateGrammarRequest):
 
     try:
         chart_id = _chart_id_from_vega_spec(request.vega_lite_spec)
-        model_name = pipeline.model_name_for_request(request.llm_backend, request.openai_model)
+        model_name = pipeline.model_name_for_request(request.llm_backend, request.openai_model, request.ollama_model)
         cached_spec = _read_cached_grammar_spec(
             chart_id=chart_id,
             model=model_name,
@@ -566,6 +566,7 @@ async def generate_grammar(request: GenerateGrammarRequest):
             debug=bool(request.debug),
             llm_backend=request.llm_backend,
             openai_model=request.openai_model,
+            ollama_model=request.ollama_model,
         )
         elapsed_ms = (time.perf_counter() - started_at) * 1000
         logger.info(
@@ -1173,7 +1174,12 @@ async def generate_grammar_baseline(request: GenerateGrammarRequest):
     planner에는 recursive와 동일한 op contract(allowed ops + 필드/의미 규칙)를 주입하므로,
     두 시스템의 차이는 "op 지식"이 아니라 "분해/grounding 전략"뿐이다.
     """
-    llm = _get_baseline_llm(app)
+    # baseline도 ours(/generate_grammar)와 동일하게 per-request 백엔드를 존중한다.
+    # (이전엔 _get_baseline_llm(app)가 서버 기본 LLM=ollama만 써서 llm_backend=openai 요청을 무시했다.)
+    pipeline: OpsSpecPipeline = getattr(app.state, "grammar_pipeline", None)
+    if pipeline is None:
+        raise HTTPException(status_code=500, detail="Grammar pipeline is not initialized.")
+    llm = pipeline._llm_for_request(request.llm_backend, request.openai_model, request.ollama_model)
     request_id = uuid.uuid4().hex[:12]
     started_at = time.perf_counter()
     q_preview = " ".join(request.question.split())[:120]

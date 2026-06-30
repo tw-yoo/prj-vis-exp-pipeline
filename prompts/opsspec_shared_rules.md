@@ -32,6 +32,10 @@ Shared rules (apply to ALL modules):
 - Absorb rhetorical bridge / transition / interpretation-only text into the nearest substantive chunk mention when it helps preserve context.
 
 7) Series restriction (CRITICAL):
+- AXIS CHECK — grouped bar, stacked bar, and multi-series line have TWO categorical axes; do not confuse them:
+  - The SERIES axis is chart_context.series_field. Its ONLY valid values are chart_context.categorical_values[series_field]. ONLY a value from THAT list may go in op_spec.group / groupA / groupB.
+  - Every OTHER categorical field (the x-axis dimension and any non-series dimension) is NOT a series. To restrict to one of its values (e.g. a specific year/region/age-group that is NOT the series field), use filter(field="<that dimension>", include=["<value>"]) — NEVER put a dimension value in op_spec.group.
+  - Litmus test before emitting group="V": is V listed in chart_context.categorical_values[series_field]? If yes → group is correct. If V belongs to a different field → it is a DIMENSION value → use filter(include=[...]) on that field instead, not group.
 - Do NOT restrict series values via a filter on the series field.
   - Forbidden (OpsSpec): { "op": "filter", "field": "<series_field>", "include": ["A","B"] }
 - Instead, restrict series via op_spec.group / op_spec.groupA / op_spec.groupB:
@@ -60,10 +64,9 @@ Shared rules (apply to ALL modules):
 - pairDiff is allowed only when the chart has a series field, such as grouped bar, stacked bar, or multi-series line.
 
 9) SumOp rule:
-- op="sum" is allowed only for bar charts (simple/stacked).
-- SumOp.group may be a string or list of strings.
-- In stacked bar, group=None or multi-group means sum all values.
-- SumOp is row aggregation only (not scalar arithmetic).
+- op="sum" totals a row-slice or N>=2 values into one scalar; allowed on ALL chart types (bar AND line).
+- SumOp.group may be a string or list of strings; group=None or multi-group means sum all values, a single group sums that series only.
+- SumOp is row aggregation only (not scalar arithmetic). To combine exactly two named scalars, use add — not sum.
 
 10) AddOp rule:
 - Use op="add" to add two scalar values.

@@ -14,6 +14,7 @@ class GenerateGrammarRequest(BaseModel):
     debug: bool = True
     llm_backend: Literal["openai", "ollama"] | None = None
     openai_model: str | None = Field(None, description="OpenAI model override (e.g. 'gpt-5.2-mini'). Falls back to OPENAI_MODEL env or server default.")
+    ollama_model: str | None = Field(None, description="Ollama model override (e.g. 'deepseek-r1:32b').")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -25,6 +26,7 @@ class GenerateGrammarRequestBodyRequest(BaseModel):
     debug: bool = True
     llm_backend: Literal["openai", "ollama"] | None = None
     openai_model: str | None = Field(None, description="OpenAI model override.")
+    ollama_model: str | None = Field(None, description="Ollama model override (e.g. deepseek-r1:32b).")
 
     model_config = ConfigDict(extra="forbid")
 

@@ -16,6 +16,7 @@ from opsspec.modules.pipeline import (
     _persist_debug_bundle,
     _select_next_task,
 )
+from opsspec.runtime.executor import OpsSpecExecutor
 
 
 class RecursivePipelineTest(unittest.TestCase):
@@ -1364,3 +1365,187 @@ class RecursivePipelineTest(unittest.TestCase):
         self.assertIsNone(right_branch[0].meta.view.panelId)
         self.assertFalse(bool(join_op.meta.view.joinBarrier))
         self.assertFalse(any("draw plan validate failed" in warning for warning in result.warnings))
+
+
+class RecursivePipelineFixATest(unittest.TestCase):
+    """structural fix A 통합 테스트.
+
+    비-filter 집계 op의 group이 비-series dimension 값일 때, 파이프라인이 선행
+    filter 노드를 삽입하고 집계 op을 그 노드에 재연결하며, nodeId가 순차 invariant를
+    유지하는지(그리고 downstream scalar ref가 재번호된 노드를 정확히 가리키는지) 검증.
+    season(dimension) 값과 category(series) 값이 겹치지 않는 컨텍스트를 사용한다.
+    """
+
+    def setUp(self) -> None:
+        self.prompts_dir = Path(__file__).resolve().parents[2] / "prompts"
+        self.context = ChartContext(
+            fields=["season", "category", "Revenue_Million_Euros"],
+            dimension_fields=["season", "category"],
+            measure_fields=["Revenue_Million_Euros"],
+            primary_dimension="season",
+            primary_measure="Revenue_Million_Euros",
+            series_field="category",
+            categorical_values={
+                "season": ["2016/17", "2017/18"],
+                "category": ["Broadcasting", "Commercial"],
+            },
+        )
+        self.rows = [
+            {"season": "2016/17", "category": "Broadcasting", "Revenue_Million_Euros": 220.0},
+            {"season": "2017/18", "category": "Broadcasting", "Revenue_Million_Euros": 190.0},
+            {"season": "2016/17", "category": "Commercial", "Revenue_Million_Euros": 300.0},
+            {"season": "2017/18", "category": "Commercial", "Revenue_Million_Euros": 260.0},
+        ]
+        self.rows_preview = self.rows[:2]
+
+    def _pipeline(self) -> OpsSpecPipeline:
+        return OpsSpecPipeline(
+            ollama_model="test",
+            ollama_base_url="http://localhost:11434/v1",
+            ollama_api_key="test",
+            prompts_dir=self.prompts_dir,
+        )
+
+    def _run(self, inventory_payload, step_payloads, debug=False):
+        with (
+            patch("opsspec.modules.pipeline.build_chart_context", return_value=(self.context, [], self.rows_preview)),
+            patch("opsspec.modules.pipeline.run_inventory_module", return_value=inventory_payload),
+            patch("opsspec.modules.pipeline.run_step_compose_module", side_effect=step_payloads),
+            patch("opsspec.modules.pipeline.build_draw_ops_spec", return_value={}),
+            patch("opsspec.modules.pipeline.export_draw_plan_to_public", return_value=Path("/tmp/draw_plan.json")),
+            patch("opsspec.modules.pipeline._persist_debug_bundle", return_value=Path("/tmp/debug_bundle")),
+        ):
+            pipeline = self._pipeline()
+            return pipeline.generate(
+                question="q",
+                explanation="e",
+                vega_lite_spec={},
+                data_rows=self.rows,
+                request_id="req",
+                debug=debug,
+            )
+
+    def test_dimension_group_average_inserts_prerequisite_filter(self) -> None:
+        # average(group="2016/17")는 season(dimension) 값 제한 의도 →
+        # filter(field="season", include=["2016/17"]) 노드를 선행 삽입하고 average를 재연결.
+        inventory_payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "average",
+                    "sentenceIndex": 1,
+                    "mention": "average revenue in 2016/17",
+                    "paramsHint": {"field": "@primary_measure", "group": "2016/17"},
+                }
+            ],
+            "warnings": [],
+        }
+        step_payloads = [
+            {
+                "pickTaskId": "o1",
+                "op_spec": {"op": "average", "field": "@primary_measure", "group": "2016/17"},
+                "inputs": [],
+            }
+        ]
+
+        result = self._run(inventory_payload, step_payloads, debug=True)
+
+        ops = result.ops_spec["ops"]
+        self.assertEqual(len(ops), 2)  # inserted filter + rewired average
+
+        filt, agg = ops[0], ops[1]
+        self.assertEqual(filt.op, "filter")
+        self.assertEqual(filt.meta.nodeId, "n1")
+        self.assertEqual(filt.id, "n1")
+        self.assertEqual(filt.field, "season")
+        self.assertEqual(filt.include, ["2016/17"])
+        self.assertEqual(list(filt.meta.inputs or []), [])
+
+        self.assertEqual(agg.op, "average")
+        self.assertEqual(agg.meta.nodeId, "n2")
+        self.assertEqual(agg.id, "n2")
+        self.assertIsNone(agg.group)
+        self.assertEqual(list(agg.meta.inputs or []), ["n1"])
+
+        # The structural insertion is recorded in the step trace warnings.
+        step_warns = [w for s in (result.trace.steps or []) for w in (s.warnings or [])]
+        self.assertTrue(any("fix A" in w for w in step_warns))
+
+        # 의미 검증: average는 season=2016/17 행들(220, 300)의 평균 = 260.
+        executor = OpsSpecExecutor(self.context)
+        executor.execute(rows=self.rows, ops_spec={"ops": list(ops)})
+        avg_values = executor.runtime.get("n2") or []
+        self.assertEqual(len(avg_values), 1)
+        self.assertEqual(avg_values[0].value, 260.0)
+
+    def test_insertion_renumbering_preserves_downstream_scalar_ref(self) -> None:
+        # 1문장: average(group="2016/17") → filter(n1)+average(n2)
+        # 2문장: 그 평균(이제 n2)보다 큰 매출 행을 filter → ref:n2가 재번호된 노드를 가리키고
+        #        downstream filter는 n3로 순차 부여돼야 한다.
+        inventory_payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "average",
+                    "sentenceIndex": 1,
+                    "mention": "average revenue in 2016/17",
+                    "paramsHint": {"field": "@primary_measure", "group": "2016/17"},
+                },
+                {
+                    "taskId": "o2",
+                    "op": "filter",
+                    "sentenceIndex": 2,
+                    "mention": "rows above that average",
+                    "paramsHint": {"field": "@primary_measure", "operator": ">", "value": "ref:n2"},
+                },
+            ],
+            "warnings": [],
+        }
+        step_payloads = [
+            {
+                "pickTaskId": "o1",
+                "op_spec": {"op": "average", "field": "@primary_measure", "group": "2016/17"},
+                "inputs": [],
+            },
+            {
+                "pickTaskId": "o2",
+                "op_spec": {
+                    "op": "filter",
+                    "field": "@primary_measure",
+                    "operator": ">",
+                    "value": "ref:n2",
+                },
+                "inputs": [],
+            },
+        ]
+
+        result = self._run(inventory_payload, step_payloads)
+
+        ops = result.ops_spec["ops"]
+        ops2 = result.ops_spec["ops2"]
+        self.assertEqual(len(ops), 2)
+        self.assertEqual(len(ops2), 1)
+
+        # 선행 filter=n1, average=n2 (순차 invariant 유지).
+        self.assertEqual(ops[0].meta.nodeId, "n1")
+        self.assertEqual(ops[1].meta.nodeId, "n2")
+
+        # downstream filter는 n3, ref:n2(재번호된 average)를 input으로 가진다.
+        downstream = ops2[0]
+        self.assertEqual(downstream.op, "filter")
+        self.assertEqual(downstream.meta.nodeId, "n3")
+        self.assertIn("n2", list(downstream.meta.inputs or []))
+        downstream_dump = downstream.model_dump(by_alias=True, exclude_none=True)
+        self.assertEqual(downstream_dump.get("value"), "ref:n2")
+
+        # 의미 검증: average=260 → revenue>260 인 행은 Commercial 2016/17(300) 1개.
+        executor = OpsSpecExecutor(self.context)
+        all_ops = list(ops) + list(ops2)
+        executor.execute(rows=self.rows, ops_spec={"ops": list(ops), "ops2": list(ops2)})
+        self.assertEqual((executor.runtime.get("n2") or [])[0].value, 260.0)
+        filtered = executor.runtime.get("n3") or []
+        self.assertEqual({round(v.value) for v in filtered}, {300})
+
+
+if __name__ == "__main__":
+    unittest.main()

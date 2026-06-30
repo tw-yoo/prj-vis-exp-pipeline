@@ -55,6 +55,32 @@ class RecursiveValidatorsTest(unittest.TestCase):
         self.assertEqual(validated.tasks[0].taskId, "o2")
         self.assertTrue(any("ignored filter on series_field" in warning for warning in validated.warnings))
 
+    def test_inventory_drops_non_contract_param_hint_keys_instead_of_failing(self) -> None:
+        # paramsHint는 비실행 힌트다. 계약에 없는 키(diff의 absolute/signed)가 섞여도
+        # inventory 전체를 폐기하지 말고 그 키만 떨어내고 통과시켜야 한다.
+        payload = {
+            "tasks": [
+                {
+                    "taskId": "o1",
+                    "op": "diff",
+                    "sentenceIndex": 1,
+                    "mention": "difference between the two values",
+                    "paramsHint": {"field": "value", "absolute": True},
+                },
+            ],
+            "warnings": [],
+        }
+        validated = validate_inventory(
+            payload,
+            ops_contract=self.ops_contract,
+            chart_context=self.chart_context,
+        )
+        self.assertEqual(len(validated.tasks), 1)
+        hint = validated.tasks[0].paramsHint
+        self.assertNotIn("absolute", hint)  # diff 계약에 없는 키 → drop
+        self.assertIn("field", hint)  # 계약에 있는 키는 유지
+        self.assertTrue(any("dropped non-contract keys" in w for w in validated.warnings))
+
     def test_inventory_allows_empty_tasks_when_warnings_explain_noop_chunks(self) -> None:
         payload = {
             "tasks": [],

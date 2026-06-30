@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from ..core.models import ChartContext
 from ..core.recursive_models import OpInventory, OpTask, StepComposeOutput
 from ..runtime.artifacts import contains_object_ref, extract_scalar_ref_deps
+from .validators import _dimension_field_for_values
 
 
 _TASK_ID_RE = re.compile(r"^o[0-9]+$")
@@ -156,10 +157,14 @@ def _validate_step_compose_group_semantics(
     if domain:
         domain_set = {str(v) for v in domain}
         if token not in domain_set:
-            errors.append(
-                f'{op_name}.group "{token}" is outside series domain for field "{chart_context.series_field}". '
-                "for year subsets, use filter(include=[...]) + average(inputs=[filter_node])."
-            )
+            # fix A: a group that is actually a unique non-series DIMENSION value is not an
+            # error — the pipeline inserts a prerequisite filter(field=<dim>, include=[token])
+            # node and rewires the op. Only genuinely unmappable/ambiguous groups stay errors.
+            if _dimension_field_for_values([token], chart_context) is None:
+                errors.append(
+                    f'{op_name}.group "{token}" is outside series domain for field "{chart_context.series_field}". '
+                    "for year subsets, use filter(include=[...]) + average(inputs=[filter_node])."
+                )
 
 
 def _validate_inventory_group_semantics(
@@ -215,10 +220,14 @@ def _validate_inventory_group_semantics(
     if domain:
         domain_set = {str(v) for v in domain}
         if token not in domain_set:
-            errors.append(
-                f'tasks[{task_index}].paramsHint["group"]="{token}" for op "{op_name}" is outside the series domain '
-                f'for field "{chart_context.series_field}". Use filter/include for dimension subsets instead.'
-            )
+            # fix A: a unique non-series DIMENSION value in the group hint is not an error —
+            # the pipeline will insert a prerequisite filter node for it. Only unmappable or
+            # ambiguous values remain errors here.
+            if _dimension_field_for_values([token], chart_context) is None:
+                errors.append(
+                    f'tasks[{task_index}].paramsHint["group"]="{token}" for op "{op_name}" is outside the series domain '
+                    f'for field "{chart_context.series_field}". Use filter/include for dimension subsets instead.'
+                )
 
 
 def validate_inventory(
@@ -297,12 +306,18 @@ def validate_inventory(
             errors.append(f'tasks[{idx}].taskId must match "o<digits>" (got "{task.taskId}").')
         if allowed_ops and task.op not in allowed_ops:
             errors.append(f'tasks[{idx}].op "{task.op}" is not in allowed_ops.')
+        # paramsHint는 실행에 쓰이지 않는 힌트다(step-compose가 op_spec 필드를 새로
+        # 만든다). 계약에 없는 키가 섞였다고 inventory 전체를 폐기하지 말고, 그 키만
+        # 조용히 떨어내고 경고만 남긴다(예: diff에 absolute/signed 힌트).
         allowed_keys = _allowed_param_keys_for_op(ops_contract, task.op)
-        for key, value in (task.paramsHint or {}).items():
-            if allowed_keys and key not in allowed_keys:
-                errors.append(f'tasks[{idx}].paramsHint has forbidden key "{key}" for op "{task.op}".')
-            if not _is_flat_value(value):
-                errors.append(f'tasks[{idx}].paramsHint["{key}"] must be a scalar or list of scalars.')
+        if allowed_keys and task.paramsHint:
+            dropped = [k for k in list(task.paramsHint.keys()) if k not in allowed_keys]
+            for key in dropped:
+                task.paramsHint.pop(key, None)
+            if dropped:
+                inventory.warnings.append(
+                    f'tasks[{idx}].paramsHint dropped non-contract keys {dropped} for op "{task.op}".'
+                )
 
         _validate_inventory_group_semantics(
             op_name=task.op,

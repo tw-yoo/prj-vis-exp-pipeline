@@ -150,6 +150,88 @@ def _validate_group_domain(group: Optional[str | List[str]], chart_context: Char
             )
 
 
+def _dimension_field_for_values(values: List[str], chart_context: ChartContext) -> Optional[str]:
+    """values를 모두 포함하는 유일한 비-series dimension field 이름. 모호하거나 없으면 None.
+
+    group="65+"처럼 series가 아닌 dimension 값이 group에 들어온 경우, 그 값이 실제로
+    어느 dimension의 값인지 결정론적으로 찾는다(정확히 한 필드일 때만 — 모호하면 None).
+    """
+    series = chart_context.series_field
+    matches: List[str] = []
+    for field, domain in chart_context.categorical_values.items():
+        if field == series:
+            continue
+        dom = {str(v) for v in (domain or [])}
+        if values and all(str(v) in dom for v in values):
+            matches.append(field)
+    return matches[0] if len(matches) == 1 else None
+
+
+# Fix A: ops whose `group` is a pure SERIES-restriction selector (validated against the
+# series domain by _normalize_series_group_for_single_group_ops / sum's domain check).
+# For these, a `group` that is actually a non-series DIMENSION value is a mis-encoding:
+# the executor's `group` slices only the series axis (item.group), so the slice is empty.
+# The intent ("restrict to rows where <dim>=X, then aggregate") must instead become a
+# prerequisite filter(field=<dim>, include=[X]) node feeding the op. Diff-family ops
+# (diff/pairDiff/diffByValue/compareBool) are intentionally excluded: their `group` has
+# compound slice semantics and their meta.inputs counts are strictly validated.
+_SERIES_GROUP_RESTRICTION_OPS: Tuple[type, ...] = (
+    AverageOp,
+    CountOp,
+    FindExtremumOp,
+    SortOp,
+    RetrieveValueOp,
+    LagDiffOp,
+    NthOp,
+    RangeOp,
+    RollingWindowOp,
+    MonotonicRunOp,
+    SumOp,
+)
+
+
+def dimension_filter_for_group_op(
+    op: OperationSpec, chart_context: ChartContext
+) -> Optional[Tuple[str, List[str]]]:
+    """비-filter 집계/선택 op의 `group`이 series가 아닌 단일 dimension 값(들)이면
+    (dim_field, [values])를 반환한다. 그 외(정상 series group / group 없음 / 모호)면 None.
+
+    structural fix A: 이 판정이 양수이면 파이프라인은 filter(field=dim_field,
+    include=values) 노드를 선행 삽입하고 집계 op의 group을 제거한 뒤 그 filter를 input으로
+    연결한다. 보수적으로 동작한다 — series 값과 겹치거나(any(v in series_domain)) 값이
+    어느 dimension에도 유일하게 매핑되지 않으면(_dimension_field_for_values=None) None을
+    반환해 기존 검증(= "outside series domain" 에러)으로 떨어진다.
+    """
+    if isinstance(op, FilterOp) or not isinstance(op, _SERIES_GROUP_RESTRICTION_OPS):
+        return None
+    series_field = chart_context.series_field
+    if not series_field:
+        return None
+
+    raw_group = getattr(op, "group", None)
+    if isinstance(raw_group, str):
+        values = [raw_group.strip()] if raw_group.strip() else []
+    elif isinstance(raw_group, list):
+        values = [str(v).strip() for v in raw_group if str(v).strip()]
+    else:
+        return None
+    if not values:
+        return None
+    # chunk-layer tokens (ops/ops2/...) are never dimension values.
+    if any(_SENTENCE_LAYER_GROUP_RE.fullmatch(v) for v in values):
+        return None
+
+    series_dom = {str(v) for v in (chart_context.categorical_values.get(series_field) or [])}
+    # Act only on a pure dim-group mistake: every value is OUTSIDE the series domain.
+    if any(v in series_dom for v in values):
+        return None
+
+    dim_field = _dimension_field_for_values(values, chart_context)
+    if not dim_field:
+        return None
+    return dim_field, values
+
+
 def _normalize_sum_group_selector(raw: Any) -> Optional[str | List[str]]:
     if raw is None:
         return None
@@ -205,16 +287,66 @@ def validate_filter_spec(
         updated = updated.model_copy(update={"field": chart_context.primary_measure})
         warnings.append(f'filter generic field "value" replaced with primary_measure "{chart_context.primary_measure}"')
 
-    # Enforce semantic single-path rules to reduce equivalent representations:
-    # - Do NOT filter on series_field directly; series restriction must be encoded via op.group.
+    # Filtering ON the series field is the inverse of the dim-in-group mistake:
+    # the model wants a SERIES restriction, which is canonically expressed via
+    # op.group. Convert membership(include/exclude) on the series field into a
+    # group restriction instead of rejecting (B). Comparison mode on a categorical
+    # series field stays invalid.
     if chart_context.series_field and updated.field == chart_context.series_field:
-        raise ValueError(
-            f'filter on series_field "{chart_context.series_field}" is forbidden; '
-            'restrict series via op.group="<series value>" or op.group=["A","B"] instead.'
-        )
+        series_domain = [str(v) for v in (chart_context.categorical_values.get(chart_context.series_field) or [])]
+        if updated.include:
+            grp = [str(v) for v in updated.include]
+            updated = updated.model_copy(update={"field": None, "include": None, "group": grp})
+            warnings.append(
+                f'filter on series_field "{chart_context.series_field}" rewritten to group={grp} (series restriction).'
+            )
+        elif updated.exclude and series_domain:
+            excluded = {str(v) for v in updated.exclude}
+            grp = [v for v in series_domain if v not in excluded]
+            if not grp:
+                raise ValueError(
+                    f'filter excluding series {sorted(excluded)} removes the entire series domain.'
+                )
+            updated = updated.model_copy(update={"field": None, "exclude": None, "group": grp})
+            warnings.append(
+                f'filter excluding series {sorted(excluded)} on "{chart_context.series_field}" '
+                f'rewritten to group={grp}.'
+            )
+        else:
+            raise ValueError(
+                f'filter on series_field "{chart_context.series_field}" is forbidden; '
+                'restrict series via op.group="<series value>" or op.group=["A","B"] instead.'
+            )
 
     normalized_group = _normalize_group_selector(updated.group)
     updated = updated.model_copy(update={"group": normalized_group})
+
+    # #4: a group-only filter whose `group` is actually a DIMENSION value (not a
+    # series value) is series-restriction applied to the wrong axis. When it maps
+    # unambiguously to exactly one non-series dimension, rewrite in-place to a
+    # membership filter on that dimension (group→include). Restricted to pure
+    # group-only filters (no include/exclude/operator/value) so an existing mode
+    # is never clobbered; ambiguous/unknown values fall through to the raise below.
+    if (
+        chart_context.series_field
+        and normalized_group
+        and not updated.include
+        and not updated.exclude
+        and not updated.operator
+        and updated.value is None
+    ):
+        group_vals = [normalized_group] if isinstance(normalized_group, str) else list(normalized_group)
+        series_dom = {str(v) for v in (chart_context.categorical_values.get(chart_context.series_field) or [])}
+        if group_vals and all(str(v) not in series_dom for v in group_vals):
+            dim_field = _dimension_field_for_values([str(v) for v in group_vals], chart_context)
+            if dim_field:
+                updated = updated.model_copy(update={"field": dim_field, "include": group_vals, "group": None})
+                normalized_group = None
+                warnings.append(
+                    f'filter group {group_vals} are values of dimension "{dim_field}" '
+                    f'(not series "{chart_context.series_field}"); rewrote group→include.'
+                )
+
     _validate_group_domain(normalized_group, chart_context)
 
     has_include = bool(updated.include)
@@ -383,8 +515,8 @@ def validate_operation(
         return updated, warnings
 
     if isinstance(op, SumOp):
-        if chart_context.mark != "bar":
-            raise ValueError('sum is allowed only for bar charts (chart_context.mark must be "bar")')
+        # sum은 모든 차트 타입에서 허용된다. line+sum은 프론트엔드에서 line→bar 전환 후
+        # bar를 stack하는 방식으로 시각화된다(executor의 합산은 mark와 무관하게 동일).
         updated, op_warnings = _validate_numeric_aggregate_field(op, chart_context=chart_context)
         warnings.extend(op_warnings)
         normalized_group = _normalize_sum_group_selector(updated.group)
@@ -397,10 +529,27 @@ def validate_operation(
             raise ValueError('diff targetA는 필수입니다 (scalar ref "ref:nX" 형식)')
         if op.targetB is None:
             raise ValueError('diff targetB는 필수입니다 (scalar ref "ref:nX" 형식)')
-        if op.meta is not None and len(op.meta.inputs) != 2:
-            raise ValueError(
-                f'diff meta.inputs에 정확히 2개의 nodeId가 필요합니다 (현재 {len(op.meta.inputs)}개)'
+        # 입력 노드 개수는 target 형태에 따라 다르다. executor(_op_diff)는 ref:nX target은
+        # 그 노드에서, dimension-label target("2019" 등)은 데이터부모를 슬라이스해서 해석한다.
+        #   - 둘 다 scalar ref → 그 2개 노드가 필요(정확히 2).
+        #   - 라벨이 하나라도 있으면 → ref 노드 + 데이터부모 1개까지만 (라벨은 부모를 공유).
+        if op.meta is not None:
+            ref_count = sum(
+                1 for t in (op.targetA, op.targetB)
+                if isinstance(t, str) and re.fullmatch(r"ref:n\d+", t) is not None
             )
+            n_inputs = len(op.meta.inputs)
+            if ref_count == 2:
+                if n_inputs != 2:
+                    raise ValueError(
+                        f'diff: targetA/targetB가 모두 scalar ref이면 meta.inputs에 정확히 2개의 '
+                        f'nodeId가 필요합니다 (현재 {n_inputs}개)'
+                    )
+            elif n_inputs > ref_count + 1:
+                raise ValueError(
+                    f'diff: dimension-label target 모드에서는 meta.inputs가 '
+                    f'(scalar ref 수 + 데이터부모 1개)={ref_count + 1}개를 넘을 수 없습니다 (현재 {n_inputs}개)'
+                )
         return op, warnings
 
     if isinstance(op, DiffByValueOp):
