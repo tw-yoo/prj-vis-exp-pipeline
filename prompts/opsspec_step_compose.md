@@ -187,6 +187,34 @@ Critical rules:
    Derive intent from the QUESTION, but never give a single-data-parent op more than
    one data-parent input.
 
+11) PARALLEL-BRANCH INDEPENDENCE (two-subset comparisons — CRITICAL):
+   When the question/explanation compares, differences, or ratios TWO (or more) DISTINCT
+   subsets — "average of A vs average of B", "before YEAR vs after YEAR", "region R vs the
+   rest", "X vs Y", "full-time vs part-time" — each subset is an INDEPENDENT branch that
+   MUST read from the base chart C0. Set inputs=[] (or to a shared ancestor that already
+   contains BOTH subsets) for EACH side's filter/aggregate. NEVER set one subset's
+   data-parent to the OTHER subset's node.
+   - Why: a node already filtered to subset A no longer contains subset B's rows, so
+     chaining B onto A yields an EMPTY slice (silent NaN); and two aggregates that share
+     ONE filtered parent collapse to the SAME value, making their diff/compare always 0.
+   - WRONG (disjoint chain → empty):
+       n1 = filter(region="North America")
+       n2 = filter(region="Latin America"), inputs=["n1"]      (n1 has no Latin America rows)
+   - WRONG (shared parent → diff is always 0):
+       n1 = filter(year between 2008..2011)
+       n2 = average, inputs=["n1"]
+       n3 = average, inputs=["n1"]                             (both averages equal n1's mean)
+       n4 = diff(ref:n2, ref:n3)                               (always 0)
+   - RIGHT (each side rooted independently at the base chart):
+       n1 = filter(region="North America")   ; n2 = average, inputs=["n1"]
+       n3 = filter(region="Latin America")    ; n4 = average, inputs=["n3"]
+       n5 = diff(targetA="ref:n2", targetB="ref:n4")
+   Only chain (inputs=[nPrev]) when the current step NARROWS THE SAME subset further
+   (progressive refinement of ONE branch), never when it begins the OTHER side of a
+   comparison. Litmus: "Does this step start a DIFFERENT subset than its candidate
+   data-parent already selected?" If yes → root it at the base chart (inputs=[]), not at
+   that sibling node.
+
 Mini pattern (subset average via inputs):
 - Wrong:
   {

@@ -104,3 +104,12 @@ Shared rules (apply to ALL modules):
 - For each request, produce one primary final artifact type (scalar, boolean, or row-list).
 - Intermediate artifacts may differ, but each intermediate node should contribute to deriving that final artifact.
 - Avoid dangling branches that do not feed into any later node.
+
+15) Parallel-branch independence (two-subset comparisons):
+- When two DISTINCT subsets are compared/differenced/ratioed ("A vs B", "before vs after",
+  "region R vs the rest", "full-time vs part-time"), each subset is an INDEPENDENT branch.
+- Each side's filter/aggregate MUST root at the base chart (inputs=[]) or a shared ancestor
+  that contains BOTH subsets. NEVER set one subset's data-parent to the OTHER subset's node:
+  a node filtered to subset A holds no subset-B rows (→ empty/NaN), and two aggregates that
+  share one filtered parent collapse to the same value (→ diff/compare always 0).
+- Only chain inputs=[nPrev] to narrow the SAME branch further, never to begin the other side.

@@ -51,6 +51,13 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _is_nan_value(value: Any) -> bool:
+    try:
+        return math.isnan(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def _debug_root_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "debug"
 
@@ -1036,6 +1043,53 @@ class OpsSpecPipeline:
                 )
                 exec_warnings.append(nan_warning)
                 artifact["nan_detected"] = True
+
+            # ── O1 auto-repair: re-root a wrongly-serialized parallel branch ──
+            # Signature (symptom-driven, no per-case logic): a single-op step whose op
+            # produced an EMPTY or all-NaN result while its lone data-parent itself holds
+            # real rows. This is the "subset B chained onto subset A's disjoint slice" bug
+            # (parallel branches serialized instead of each rooted at the base chart). The
+            # op's own predicate/group selects correctly once it sees the full base, so we
+            # drop the data-parent (keep scalar refs) and re-execute; we adopt the re-root
+            # only if it now yields a non-empty, non-NaN result. fix-A two-op steps are
+            # skipped (len==1 guard); scalar-combining ops have no data-parent so never fire.
+            if len(step_ops) == 1 and built_op.meta is not None:
+                rv = list(executor.runtime.get(primary_node_id, []))
+                result_empty = len(rv) == 0
+                result_all_nan = bool(rv) and all(_is_nan_value(item.value) for item in rv)
+                data_parents = [i for i in (built_op.meta.inputs or []) if i not in scalar_deps]
+                if (result_empty or result_all_nan) and len(data_parents) == 1:
+                    parent_rows = list(executor.runtime.get(data_parents[0], []))
+                    parent_has_rows = any(not _is_nan_value(item.value) for item in parent_rows)
+                    if parent_has_rows:
+                        rerooted_dict = built_op.model_dump(by_alias=True, exclude_none=True)
+                        if isinstance(rerooted_dict.get("meta"), dict):
+                            rerooted_dict["meta"]["inputs"] = sorted(scalar_deps)
+                        try:
+                            rerooted_op = parse_operation_spec(rerooted_dict)
+                            executor.execute(rows=data_rows, ops_spec={group_name: [rerooted_op]})
+                            rv2 = list(executor.runtime.get(primary_node_id, []))
+                            improved = bool(rv2) and any(not _is_nan_value(item.value) for item in rv2)
+                        except Exception as exc:
+                            improved = False
+                            exec_warnings.append(f"O1 auto-repair attempt failed: {exc}")
+                        if improved:
+                            built_op = rerooted_op
+                            step_ops = [rerooted_op]
+                            artifact = summarize_runtime_values(
+                                list(executor.runtime.get(primary_node_id, [])),
+                                chart_context=chart_context,
+                                max_items=max(1, artifact_preview_n),
+                            )
+                            node_artifacts[primary_node_id] = artifact
+                            step_warnings.append(
+                                f"O1 auto-repair: node {primary_node_id} ({built_op.op}) was "
+                                f"empty/NaN chained on data-parent {data_parents[0]} (disjoint "
+                                f"parallel branch); re-rooted to the base chart and it now yields a value."
+                            )
+                        else:
+                            # Re-root did not help — restore the original result/runtime.
+                            executor.execute(rows=data_rows, ops_spec={group_name: step_ops})
 
             # Update graph + state (register every node produced this step).
             for sop, sid in zip(step_ops, step_node_ids):
